@@ -1,0 +1,23 @@
+{
+  "binaryTargets": [],
+  "contentHash": "sha256-mBG+wZGo7Z502/O9IiM1ore8pcUfuhujZj5kDDTADUg=",
+  "localDependencies": [],
+  "manifestHash": "2319d75b28fee0c577d7fe8a5b55cc064fec0803146b0ed9e2ea59c98e472048",
+  "package": "native-proof",
+  "pins": {},
+  "products": [
+    {
+      "linkage": "dynamic",
+      "name": "Proof",
+      "type": "library"
+    },
+    {
+      "linkage": "static",
+      "name": "BaseStatic",
+      "type": "library"
+    }
+  ],
+  "rootDirectory": "native-proof",
+  "version": 4,
+  "workspaceStateVersion": 7
+}
