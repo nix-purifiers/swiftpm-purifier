@@ -106,6 +106,10 @@ let
   helloRead = library.readLock { src = ./fixtures/hello; };
 in
 {
+  native-projections = import ./native-projections.nix {
+    inherit pkgs;
+    build = build;
+  };
   fixture-hello =
     prints "fixture-hello" "${lib.getExe hello.packages.hello} Nix Swift Nix"
       "Hello, Nix!\nHello, Swift!";

@@ -128,6 +128,11 @@ A package in an overlay that takes the scope as `{ swiftpm-purifier }:` calls
 - `artifactBuildInputs`, libraries that the prebuilt files of binary
   targets need beyond the C and C++ runtime, curl, libxml2, zlib, OpenSSL,
   SQLite and ICU.
+- `nativeProducts`, an optional list of locked dynamic-library product names
+  whose public C ABI the caller explicitly selects. Defaults to `[]`.
+- `nativeIncludeDirectories`, optional relative directories in the installed
+  project that hold public C headers. Install those headers with `postInstall`
+  when the native SwiftPM install hook does not install them.
 - Any argument of `stdenv.mkDerivation`.
 
 It returns:
@@ -144,6 +149,23 @@ It returns:
 - `fetches`, the purifier library entries that the build fetches.
 - `project`, the build with every product installed, and `tree`, the locked
   dependencies laid out for SwiftPM.
+
+Selected `nativeProducts` expose `.projections.native`, `.python-ffi`, and
+`.java-ffi` on both the build result and `packages.<product>` (the latter
+contains only that product). The native catalog gives exact library paths,
+headers, target system and producer identity. Use `purifier_native.load(name)`
+with that view on `PYTHONPATH`, or pass its catalog library path to Java FFM;
+the caller supplies compatible function signatures and lifetime rules.
+The projection retains the installed producer and its runtime closure.
+
+For example, `nativeProducts = [ "Proof" ];` selects the installed dynamic
+product `Proof` from the checked lock. Missing, duplicate, static and automatic
+products are rejected. Ordinary Swift libraries keep their Swift modules and
+source distribution behavior; a Swift ABI is not inferred to be a C ABI.
+The check builds a C target and its dependency through SwiftPM, calls the
+exported symbol from ctypes, cffi and Java 21 FFM, and checks `dladdr` on the
+tested function pointer against the selected library. This proves that
+fixture and selected SDK, rather than arbitrary Swift APIs or cross targets.
 
 The builder is a package for `callPackage` in that scope. It takes
 `swiftPackages`, `runCommand`, `zip`, `unzip`, `zstd`, `python3`,

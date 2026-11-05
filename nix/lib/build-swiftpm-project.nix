@@ -64,6 +64,9 @@
   packageResolved ? src + "/Package.resolved",
   buildConfig ? "release",
   artifactBuildInputs ? [ ],
+  # Explicit assertion that these locked dynamic products expose a public C ABI.
+  nativeProducts ? [ ],
+  nativeIncludeDirectories ? [ ],
   ...
 }@args:
 let
@@ -120,9 +123,11 @@ let
     "packageResolved"
     "buildConfig"
     "artifactBuildInputs"
+    "nativeProducts"
+    "nativeIncludeDirectories"
   ];
 
-  project =
+  builtProject =
     assert current;
     stdenv.mkDerivation (
       {
@@ -202,6 +207,39 @@ let
       ]
     );
 
+  dynamicProducts = map (product: product.name) (
+    builtins.filter (product: product.type == "library" && product.linkage == "dynamic") read.products
+  );
+  selectedProducts =
+    if
+      !builtins.isList nativeProducts
+      || !builtins.all (name: builtins.isString name && builtins.elem name dynamicProducts) nativeProducts
+      || builtins.length (lib.unique nativeProducts) != builtins.length nativeProducts
+    then
+      throw "swiftpm-purifier: nativeProducts must uniquely select locked dynamic library products with a public C ABI"
+    else
+      nativeProducts;
+  nativeProjection =
+    names:
+    purifier.nativeProjections {
+      producer = builtProject;
+      libraries = builtins.listToAttrs (
+        map (name: {
+          inherit name;
+          value = "lib/lib${name}${stdenv.hostPlatform.extensions.sharedLibrary}";
+        }) names
+      );
+      includeDirectories = nativeIncludeDirectories;
+      inherit runCommand python3;
+      system = stdenv.hostPlatform.system;
+    };
+  projections = builtins.seq selectedProducts (
+    lib.optionalAttrs (selectedProducts != [ ]) (nativeProjection selectedProducts)
+  );
+  project = builtProject // {
+    inherit projections;
+  };
+
   staticLibraries = map (product: product.name) (
     builtins.filter (product: product.type == "library" && product.linkage == "static") read.products
   );
@@ -210,7 +248,7 @@ let
     assert current;
     import ./source-archive.nix { inherit runCommand zip; } { inherit src name; };
 
-  packageOf =
+  basePackageOf =
     product:
     if product.type == "executable" then
       runCommand product.name { meta.mainProgram = product.name; } ''
@@ -229,10 +267,24 @@ let
       ''
     else
       release;
+  packageOf =
+    product:
+    let
+      package = basePackageOf product;
+    in
+    package
+    // lib.optionalAttrs (builtins.elem product.name selectedProducts) {
+      projections = nativeProjection [ product.name ];
+    };
 in
-{
+builtins.seq selectedProducts {
   inherit (read) lock;
-  inherit tree project release;
+  inherit
+    tree
+    project
+    release
+    projections
+    ;
 
   # The products by name, from the outputs of the checked lock, so a
   # lockfile with problems stops the evaluation with them.
