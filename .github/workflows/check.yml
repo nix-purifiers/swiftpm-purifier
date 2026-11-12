@@ -43,6 +43,7 @@ jobs:
           cp "$runtime/original-tool-bytes.json" "$runtime/original-runtime-bytes.json" "$runtime/original-header-relocations.json" "$RUNNER_TEMP/legacy-sdk-metadata/"
       - name: Exercise installed runtime capture and cold dependency replay
         run: |
+          python3 tests/legacy-local-reader-parity.py --output "$RUNNER_TEMP/legacy-readers"
           runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/legacy-runtime-build.json")
           python3 tests/legacy-state-lifecycle.py --runtime-prefix "$runtime" --pure --output "$RUNNER_TEMP/legacy-state"
       - name: Retain historical runtime and replay evidence
@@ -53,6 +54,7 @@ jobs:
           path: |
             ${{ runner.temp }}/legacy-runtime-build.json
             ${{ runner.temp }}/legacy-sdk-metadata
+            ${{ runner.temp }}/legacy-readers
             ${{ runner.temp }}/legacy-state/receipt.json
             ${{ runner.temp }}/legacy-state/logs
             ${{ runner.temp }}/legacy-state/native-dependencies-state.json
@@ -63,6 +65,7 @@ jobs:
             ${{ runner.temp }}/legacy-state/relocated/Package.swift
             ${{ runner.temp }}/legacy-state/relocated/Sources
             ${{ runner.temp }}/legacy-state/relocated/Tests
+            ${{ runner.temp }}/legacy-state/relocated/Local
             ${{ runner.temp }}/legacy-state/original/Package.resolved
             ${{ runner.temp }}/legacy-state/original/swiftpm-purifier.lock.json
             ${{ runner.temp }}/legacy-state/relocated/Package.resolved

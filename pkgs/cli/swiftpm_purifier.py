@@ -211,6 +211,12 @@ def pinned_at(pin: dict) -> str:
 def is_current(root: Path, lock: dict) -> bool:
     """Whether the lockfile covers the pins of Package.resolved, as
     lock.nix checks, and the manifests the lock run saw."""
+    if lock.get("workspaceStateVersion") == 2 and not legacy_state_lock_valid(
+        root, lock
+    ):
+        raise PurifierError(
+            "unsupported or unsafe dependency-state format-2 lock; run `swiftpm-purifier relock`"
+        )
     locked = lock.get("pins", {})
     identities = {}
     for identity, value in locked.items():
@@ -239,6 +245,68 @@ def is_current(root: Path, lock: dict) -> bool:
             for pin in pins
         )
     )
+
+
+def legacy_state_lock_valid(root: Path, lock: dict) -> bool:
+    try:
+        resolved = read_json(resolved_path(root))
+    except (json.JSONDecodeError, OSError):
+        return False
+    pins = lock.get("pins")
+    local = lock.get("localDependencies")
+    if (
+        (
+            resolved is not None
+            and (not isinstance(resolved, dict) or resolved.get("version") != 1)
+        )
+        or not isinstance(pins, dict)
+        or not isinstance(local, list)
+        or lock.get("binaryTargets") != []
+    ):
+        return False
+    names = []
+    identities = list(pins)
+    for pin in pins.values():
+        name = pin.get("name") if isinstance(pin, dict) else None
+        if (
+            not isinstance(name, str)
+            or re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", name) is None
+        ):
+            return False
+        names.append(name)
+    for dependency in local:
+        if not isinstance(dependency, dict) or set(dependency) != {
+            "basedOn",
+            "packageRef",
+            "state",
+            "subpath",
+        }:
+            return False
+        ref = dependency["packageRef"]
+        if (
+            not isinstance(ref, dict)
+            or set(ref) != {"identity", "isLocal", "name", "path"}
+            or ref["isLocal"] is not True
+            or dependency["basedOn"] is not None
+            or dependency["state"] != {"name": "local"}
+            or not isinstance(ref["identity"], str)
+            or not ref["identity"]
+            or not isinstance(ref["name"], str)
+            or not ref["name"]
+            or dependency["subpath"] != ref["identity"]
+            or not isinstance(ref["path"], str)
+            or not ref["path"].startswith("@root@/")
+        ):
+            return False
+        parts = ref["path"][len("@root@/") :].split("/")
+        if (
+            any(part in ("", ".", "..") for part in parts)
+            or not (root.joinpath(*parts) / "Package.swift").is_file()
+        ):
+            return False
+        names.append(ref["name"])
+        identities.append(ref["identity"])
+    return len(set(names)) == len(names) and len(set(identities)) == len(identities)
 
 
 def find_root(start: Path) -> Path:
@@ -857,9 +925,9 @@ def relock(root: Path, update=None):
             names = []
             for dependency in state["object"]["dependencies"]:
                 ref = dependency.get("packageRef", {})
-                if ref.get("isLocal") is not False:
+                if ref.get("isLocal") is not False and ref.get("isLocal") is not True:
                     raise PurifierError(
-                        "dependency-state format 2 currently requires remote checkout dependencies"
+                        "dependency-state format 2 has an unknown package reference"
                     )
                 names.append(ref.get("name"))
             if any(not isinstance(name, str) for name in names) or len(
@@ -903,6 +971,39 @@ def relock(root: Path, update=None):
         # does not list.
         local = []
         for identity, dependency in recorded.items():
+            if state["version"] == 2:
+                ref = dependency["packageRef"]
+                if (
+                    set(dependency) != {"basedOn", "packageRef", "state", "subpath"}
+                    or set(ref) != {"identity", "isLocal", "name", "path"}
+                    or ref.get("isLocal") is not True
+                    or dependency["basedOn"] is not None
+                    or dependency["state"] != {"name": "local"}
+                    or dependency["subpath"] != identity
+                    or not isinstance(ref.get("path"), str)
+                    or not Path(ref["path"]).is_absolute()
+                    or not Path(ref["path"]).resolve().is_relative_to(package.resolve())
+                    or not (Path(ref["path"]) / "Package.swift").is_file()
+                ):
+                    raise PurifierError(
+                        "unsupported or escaping dependency-state format-2 local package"
+                    )
+                try:
+                    relative = Path(ref["path"]).relative_to(package)
+                except ValueError as error:
+                    raise PurifierError(
+                        "local package path is outside the captured source"
+                    ) from error
+                if (
+                    not relative.parts
+                    or ".." in relative.parts
+                    or str(Path(ref["path"])) != ref["path"]
+                ):
+                    raise PurifierError(
+                        "local package path is not a portable in-tree path"
+                    )
+                local.append(dependency)
+                continue
             if dependency["state"]["name"] != "fileSystem":
                 raise PurifierError(
                     f"SwiftPM's workspace state has {identity} in state "

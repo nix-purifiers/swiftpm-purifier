@@ -1,0 +1,7 @@
+Actual original Swift 4.2.4 / SwiftPM Swift 4.2.0 native fixture metadata.
+Package.swift, Package.resolved, Local/Package.swift and dependencies-state.json
+are retained native217 source/output bytes. The portable format4 lock is actual
+purifier capture220 output. It preserves native in-tree local metadata through
+the existing localDependencies field. The loopback URL is historical fixture
+data, never a reusable fetch endpoint. These reader tests perform no SDK command
+substitution and make no cold-fetch or exhaustive runtime support claim.

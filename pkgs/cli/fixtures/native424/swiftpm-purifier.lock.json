@@ -1,0 +1,43 @@
+{
+  "binaryTargets": [],
+  "contentHash": "sha256-L3IReRd2hNFrv0Hi2QFkP5WwkxwlWN1VSmENMDW4tCw=",
+  "localDependencies": [
+    {
+      "basedOn": null,
+      "packageRef": {
+        "identity": "local",
+        "isLocal": true,
+        "name": "LocalLeaf",
+        "path": "@root@/Local"
+      },
+      "state": {
+        "name": "local"
+      },
+      "subpath": "local"
+    }
+  ],
+  "manifestHash": "2683d8ea0f5ff41fac022300eef2367a1f62453da9e1486c6d9b3b9f8bb2fe24",
+  "package": "NativeApp",
+  "pins": {
+    "leaf": {
+      "hash": "sha256-/uWFfIcd2BWTBYzV3sJZ2xKtnmSi0TJl1QQJevyxrEs=",
+      "name": "LegacyLeaf",
+      "revision": "495b9c582cf2fe382700af25cf514bfcb8b694c5",
+      "sourceLocation": "http://127.0.0.1:43063/Leaf.git"
+    }
+  },
+  "products": [
+    {
+      "linkage": "automatic",
+      "name": "AppCore",
+      "type": "library"
+    },
+    {
+      "name": "NativeApp",
+      "type": "executable"
+    }
+  ],
+  "rootDirectory": "project",
+  "version": 4,
+  "workspaceStateVersion": 2
+}

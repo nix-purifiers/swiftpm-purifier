@@ -177,6 +177,62 @@ let
     builtins.sort builtins.lessThan (map (pin: pin.identity) resolvedPins)
     == builtins.attrNames lock.pins;
 
+  uniqueStrings =
+    values:
+    builtins.length (
+      builtins.attrNames (
+        builtins.listToAttrs (
+          map (name: {
+            inherit name;
+            value = true;
+          }) values
+        )
+      )
+    ) == builtins.length values;
+  legacyNames =
+    map (identity: lock.pins.${identity}.name) (builtins.attrNames lock.pins)
+    ++ map (dependency: dependency.packageRef.name) lock.localDependencies;
+  legacyIdentities =
+    builtins.attrNames lock.pins
+    ++ map (dependency: dependency.packageRef.identity) lock.localDependencies;
+
+  legacyLocalValid =
+    dependency:
+    let
+      ref = dependency.packageRef or { };
+      matched =
+        if builtins.isString (ref.path or null) then builtins.match "@root@/(.+)" ref.path else null;
+      relative = if matched == null then "" else builtins.head matched;
+      components = builtins.filter builtins.isString (builtins.split "/" relative);
+    in
+    builtins.isAttrs dependency
+    &&
+      builtins.attrNames dependency == [
+        "basedOn"
+        "packageRef"
+        "state"
+        "subpath"
+      ]
+    && dependency.basedOn == null
+    && dependency.state == { name = "local"; }
+    && builtins.isAttrs ref
+    &&
+      builtins.attrNames ref == [
+        "identity"
+        "isLocal"
+        "name"
+        "path"
+      ]
+    && ref.isLocal == true
+    && builtins.isString ref.identity
+    && ref.identity != ""
+    && builtins.isString ref.name
+    && ref.name != ""
+    && dependency.subpath == ref.identity
+    && matched != null
+    && builtins.all (part: part != "" && part != "." && part != "..") components
+    && builtins.pathExists (src + "/${relative}/Package.swift");
+
   # The first problem in the order the checks depend on each other: a later
   # check reads what an earlier one verified.
   problem =
@@ -202,8 +258,8 @@ let
     else if
       lock.workspaceStateVersion == 2
       && (
-        (resolved.version or null) != 1
-        || lock.localDependencies != [ ]
+        (builtins.pathExists resolvedFile && (resolved.version or null) != 1)
+        || !(builtins.all legacyLocalValid lock.localDependencies)
         || lock.binaryTargets != [ ]
         || !(builtins.all (
           identity:
@@ -212,17 +268,8 @@ let
           in
           builtins.isString name && builtins.match "[A-Za-z0-9_][A-Za-z0-9_.-]*" name != null
         ) (builtins.attrNames lock.pins))
-        ||
-          builtins.length (
-            builtins.attrNames (
-              builtins.listToAttrs (
-                map (identity: {
-                  name = lock.pins.${identity}.name;
-                  value = true;
-                }) (builtins.attrNames lock.pins)
-              )
-            )
-          ) != builtins.length (builtins.attrNames lock.pins)
+        || !uniqueStrings legacyNames
+        || !uniqueStrings legacyIdentities
       )
     then
       "swiftpm-purifier: unsupported or unsafe dependency-state format-2 lock. ${relock}"
@@ -416,10 +463,15 @@ in
 
   workspaceState = {
     object = {
-      artifacts = lock.binaryTargets;
       dependencies = lock.localDependencies ++ map recordOf resolvedPins;
     }
-    // (if (resolved.version or null) == 1 then { } else { prebuilts = [ ]; });
+    // (if lock.workspaceStateVersion == 2 then { } else { artifacts = lock.binaryTargets; })
+    // (
+      if lock.workspaceStateVersion == 2 || (resolved.version or null) == 1 then
+        { }
+      else
+        { prebuilts = [ ]; }
+    );
     version = lock.workspaceStateVersion;
   };
   workspaceStateFile =

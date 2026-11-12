@@ -63,6 +63,7 @@ stdenvNoCC.mkDerivation {
       ./host_runtime.py
       ./test_swiftpm_purifier.py
       ./fixtures/native553
+      ./fixtures/native424
     ];
   };
 

@@ -225,13 +225,21 @@ def main():
     project = work / "original"
     write(
         project / "Package.swift",
-        '// swift-tools-version:4.2\nimport PackageDescription\nlet package=Package(name:"NativeApp",products:[.library(name:"AppCore",targets:["AppCore"]),.executable(name:"NativeApp",targets:["NativeApp"])],dependencies:[.package(url:'
+        '// swift-tools-version:4.2\nimport PackageDescription\nlet package=Package(name:"NativeApp",products:[.library(name:"AppCore",targets:["AppCore"]),.executable(name:"NativeApp",targets:["NativeApp"])],dependencies:[.package(path:"Local"),.package(url:'
         + json.dumps(origin)
-        + ',from:"1.0.0")],targets:[.target(name:"AppCore",dependencies:[.product(name:"LegacyLeaf",package:"Leaf")]),.target(name:"NativeApp",dependencies:["AppCore"]),.testTarget(name:"AppCoreTests",dependencies:["AppCore"])])\n',
+        + ',from:"1.0.0")],targets:[.target(name:"AppCore",dependencies:[.product(name:"LegacyLeaf",package:"Leaf"),.product(name:"LocalLeaf",package:"Local")]),.target(name:"NativeApp",dependencies:["AppCore"]),.testTarget(name:"AppCoreTests",dependencies:["AppCore"])])\n',
+    )
+    write(
+        project / "Local/Package.swift",
+        '// swift-tools-version:4.2\nimport PackageDescription\nlet package=Package(name:"LocalLeaf",products:[.library(name:"LocalLeaf",targets:["LocalLeaf"])],targets:[.target(name:"LocalLeaf")])\n',
+    )
+    write(
+        project / "Local/Sources/LocalLeaf/Local.swift",
+        "public func localAdjustment()->Int{return 1}\n",
     )
     write(
         project / "Sources/AppCore/Core.swift",
-        'import LegacyLeaf\n#if compiler(>=5.0)\n#error("requires historical Swift4 compiler")\n#endif\npublic func answer()->Int{return leafAnswer()}\n',
+        'import LegacyLeaf\nimport LocalLeaf\n#if compiler(>=5.0)\n#error("requires historical Swift4 compiler")\n#endif\npublic func answer()->Int{return leafAnswer()+localAdjustment()-1}\n',
     )
     write(
         project / "Sources/NativeApp/main.swift",

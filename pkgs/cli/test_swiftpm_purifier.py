@@ -38,6 +38,32 @@ def checkout(identity, location, kind="remoteSourceControl", name=None):
     }
 
 
+class LegacyLocalState(unittest.TestCase):
+    fixture = Path(__file__).parent / "fixtures/native424"
+
+    def test_actual_native_local_metadata_is_current(self):
+        self.assertTrue(
+            sp.is_current(
+                self.fixture, json.loads((self.fixture / sp.LOCK_NAME).read_text())
+            )
+        )
+
+    def test_escape_or_unknown_local_protocol_is_rejected(self):
+        original = json.loads((self.fixture / sp.LOCK_NAME).read_text())
+        for field, value in (
+            ("path", "@root@/../Local"),
+            ("path", "@root@/Missing"),
+            ("isLocal", False),
+            ("identity", "leaf"),
+            ("name", "LegacyLeaf"),
+        ):
+            with self.subTest(field=field, value=value):
+                lock = copy.deepcopy(original)
+                lock["localDependencies"][0]["packageRef"][field] = value
+                with self.assertRaises(sp.PurifierError):
+                    sp.is_current(self.fixture, lock)
+
+
 class ManifestHash(unittest.TestCase):
     def test_matches_the_nix_formula(self):
         with tempfile.TemporaryDirectory() as directory:
