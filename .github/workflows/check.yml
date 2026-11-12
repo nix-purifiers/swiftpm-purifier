@@ -47,6 +47,7 @@ jobs:
               p = import f.inputs.nixpkgs { system = builtins.currentSystem; };
             in p.nix-prefetch-git
           ' > "$RUNNER_TEMP/dependencies-v1-prefetch-prefix"
+          nix build --no-link --print-out-paths "path:$FIXTURE_SOURCE#default" > "$RUNNER_TEMP/dependencies-v1-cli-prefix"
       - name: Validate readers and original native transitive builds
         run: |
           python3 tests/dependencies-v1-codec-parity.py --output "$RUNNER_TEMP/dependencies-v1-codec"
@@ -54,7 +55,8 @@ jobs:
           python3 tests/dependencies-v1-pure.py > "$RUNNER_TEMP/dependencies-v1-readers.json"
           runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/dependencies-v1-runtime-build.json")
           prefetch=$(cat "$RUNNER_TEMP/dependencies-v1-prefetch-prefix")
-          python3 tests/dependencies-v1-pure-native.py --transitive --runtime-prefix "$runtime" --nix-prefetch-git "$prefetch/bin/nix-prefetch-git" --work "$RUNNER_TEMP/dependencies-v1-native"
+          cli=$(cat "$RUNNER_TEMP/dependencies-v1-cli-prefix")
+          python3 tests/dependencies-v1-pure-native.py --transitive --runtime-prefix "$runtime" --nix-prefetch-git "$prefetch/bin/nix-prefetch-git" --cli "$cli/bin/swiftpm-purifier" --work "$RUNNER_TEMP/dependencies-v1-native"
       - name: Retain native state and product evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -64,6 +66,7 @@ jobs:
             ${{ runner.temp }}/dependencies-v1-runtime-build.json
             ${{ runner.temp }}/dependencies-v1-sdk-metadata
             ${{ runner.temp }}/dependencies-v1-prefetch-prefix
+            ${{ runner.temp }}/dependencies-v1-cli-prefix
             ${{ runner.temp }}/dependencies-v1-codec
             ${{ runner.temp }}/dependencies-v1-layout
             ${{ runner.temp }}/dependencies-v1-readers.json

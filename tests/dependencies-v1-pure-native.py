@@ -29,6 +29,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--work", required=True, type=Path)
     parser.add_argument("--runtime-prefix", required=True, type=Path)
+    parser.add_argument("--cli", type=Path, help="also exercise an installed local CLI")
     parser.add_argument(
         "--nix-prefetch-git", type=Path, default=TOOLS["nix-prefetch-git"]
     )
@@ -88,7 +89,7 @@ def main():
         "implementationSource": str(REPO),
         "implementationFiles": implementation_files,
         "complete": False,
-        "scope": "private explicit original SDK 4.0.3 Linux fixture only; no host lifecycle/public support claim",
+        "scope": "Explicit original SDK4.0.3 Linux native/pure fixture; installed host lifecycle when --cli supplied. No version interval, Darwin or general SDK/ABI attestation.",
         "commands": [],
         "captures": [],
         "consumers": [],
@@ -560,6 +561,110 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
         )
         assert result == {"default": True, "null": True, "external": True}
         receipt["pureEvaluation"] = result
+        if args.cli is not None:
+            cli = args.cli.resolve(strict=True)
+            env.update(
+                SWIFTPM_PURIFIER_RUNTIME_MODE="local",
+                SWIFTPM_PURIFIER_FLAKE=str(REPO),
+                SWIFTPM_PURIFIER_SWIFT=str(SDK / "bin/swift"),
+                SWIFTPM_PURIFIER_NIX=TOOLS["nix"],
+                SWIFTPM_PURIFIER_GIT=TOOLS["git"],
+                SWIFTPM_PURIFIER_NIX_PREFETCH_GIT=TOOLS["nix-prefetch-git"],
+                XDG_STATE_HOME=str(work / "host-state"),
+            )
+            receipt["hostCLI"] = []
+            for selection in ("default", "external"):
+                fixture = work / ("host-" + selection) / "project"
+                fixture.parent.mkdir()
+                shutil.copytree(
+                    root,
+                    fixture,
+                    symlinks=True,
+                    ignore=lambda parent, names: (
+                        [
+                            name
+                            for name in names
+                            if name
+                            in {
+                                ".build",
+                                ".git",
+                                "Packages",
+                                "swiftpm-purifier.lock.json",
+                            }
+                        ]
+                        if Path(parent) == root
+                        else []
+                    ),
+                )
+                command = [cli, "--package-path", fixture]
+                native = fixture / "Package.resolved"
+                portable = fixture / "swiftpm-purifier.lock.json"
+                if selection == "external":
+                    native_parent = work / "host-external-native"
+                    portable_parent = work / "host-external-portable"
+                    native_parent.mkdir()
+                    portable_parent.mkdir()
+                    native = native_parent / "pins.json"
+                    portable = portable_parent / "lock.json"
+                    native.write_bytes(original_pins + b"\n")
+                    (fixture / "Package.resolved").write_bytes(
+                        b"unselected logical file\n"
+                    )
+                    (fixture / "Package.resolved").chmod(0o600)
+                    command += ["--tool-lockfile", native, "--lockfile", portable]
+                prefix = "host-" + selection
+                run(prefix + "-relock", [*command, "relock"])
+                captured = json.loads(portable.read_bytes())
+                assert captured["version"] == 8
+                assert not (fixture / ".build").exists()
+                native_bytes = native.read_bytes()
+                native_inode = native.stat().st_ino
+                portable_inode = portable.stat().st_ino
+                if selection == "external":
+                    native.chmod(0o400)
+                    portable.chmod(0o400)
+                    native.parent.chmod(0o500)
+                    portable.parent.chmod(0o500)
+                try:
+                    run(prefix + "-prefetch", [*command, "prefetch"])
+                    run(prefix + "-build", [*command, "swift", "build"])
+                    run(prefix + "-test", [*command, "swift", "test"])
+                    assert native.read_bytes() == native_bytes
+                    assert portable.stat().st_ino == portable_inode
+                    if selection == "external":
+                        assert native.stat().st_ino == native_inode
+                        assert (
+                            fixture / "Package.resolved"
+                        ).read_bytes() == b"unselected logical file\n"
+                        assert (
+                            fixture / "Package.resolved"
+                        ).stat().st_mode & 0o777 == 0o600
+                        assert [p.name for p in native.parent.iterdir()] == [
+                            "pins.json"
+                        ]
+                        assert [p.name for p in portable.parent.iterdir()] == [
+                            "lock.json"
+                        ]
+                finally:
+                    if selection == "external":
+                        native.parent.chmod(0o700)
+                        portable.parent.chmod(0o700)
+                run(prefix + "-owned-relock", [*command, "relock"])
+                run(prefix + "-owned-update", [*command, "update"])
+                run(prefix + "-uninstall", [*command, "uninstall"])
+                assert not (fixture / "Packages").exists()
+                assert not (fixture / ".build/dependencies-state.json").exists()
+                receipt["hostCLI"].append(
+                    {
+                        "selection": selection,
+                        "executable": str(cli),
+                        "source": str(fixture),
+                        "contentHash": captured["contentHash"],
+                        "nativeBytesPreservedDuringCommands": True,
+                        "uninstallRestoresStateAbsence": True,
+                    }
+                )
+                save()
         assert (
             before
             == run("caller-after", [TOOLS["nix"], "hash", "path", root])
