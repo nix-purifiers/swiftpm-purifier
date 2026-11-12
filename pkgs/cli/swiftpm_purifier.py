@@ -1542,6 +1542,24 @@ def swift_command(arguments):
             "run `swiftpm-purifier lock`, which resolves and records the new dependencies"
         )
     prefetch(root)
+    if lock["version"] == legacy_state.FORMAT:
+        selected = legacy_native_path(root)
+        logical = root / "Package.pins"
+        original = logical.read_bytes() if logical.exists() else None
+        if selected != logical:
+            if selected.exists():
+                logical.write_bytes(selected.read_bytes())
+            elif logical.exists():
+                logical.unlink()
+        try:
+            status = subprocess.run([swift, *arguments], check=False).returncode
+        finally:
+            if original is None:
+                if logical.exists():
+                    logical.unlink()
+            elif not logical.exists() or logical.read_bytes() != original:
+                logical.write_bytes(original)
+        raise SystemExit(status)
     # SwiftPM deletes Package.resolved when every dependency is edited,
     # because no pin is left for it to write. The lockfile reads its pins
     # from Package.resolved, so the file goes back after SwiftPM exits.
