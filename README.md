@@ -224,8 +224,9 @@ consumption are rejected. Existing format 4 and 5 readers reject format 6.
 
 The original Swift 3.1.1 compiler and bundled SwiftPM 3.1.0 are a fixture
 point for this protocol. Pure builds can select that immutable SDK
-explicitly. Its native XCTest runner requires a debug build; release
-program builds are separate. These fixture versions do not restrict the
+explicitly. The tested fixture uses generated `@testable` imports that
+require a debug build; release program builds are checked separately.
+These fixture versions do not restrict the
 runtime selected for local commands.
 
 `lib.swiftpm-purifier.readLock { src, lockFile ? ..., packageResolved ? ... }`
