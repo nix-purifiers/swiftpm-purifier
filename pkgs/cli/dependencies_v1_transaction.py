@@ -142,6 +142,9 @@ def lock_file(path):
 
 
 class Transaction:
+    OPERATION = "capture-update"
+    KEEP_PORTABLE = False
+
     def __init__(
         self, root, registry, native=selectors.DEFAULT, portable=selectors.DEFAULT
     ):
@@ -275,7 +278,7 @@ class Transaction:
             type(record["version"]) is int
             and record["version"] == 1
             and record["protocol"] == "dependencies-state-v1"
-            and record["operation"] == "capture-update",
+            and record["operation"] == self.OPERATION,
             "transaction protocol/operation",
         )
         need(
@@ -351,6 +354,8 @@ class Transaction:
                 ]
             }
             for index, path in enumerate(self.paths):
+                if self.KEEP_PORTABLE and index == 1:
+                    continue
                 if path is None or identity(path.parent) != parent_id:
                     continue
                 for label, field in (("new", "new"), ("restore", "old")):
@@ -582,6 +587,13 @@ class Transaction:
                 and self.modes() == record["oldModes"][:index] + modes[index:],
                 "detected foreign restoration output change",
             )
+            if self.KEEP_PORTABLE and index == 1:
+                need(
+                    current[index] == original[index]
+                    and modes[index] == record["oldModes"][index],
+                    "bridge portable bytes changed during execution",
+                )
+                continue
             if raw is None:
                 path.unlink(missing_ok=True)
             else:
@@ -605,8 +617,12 @@ class Transaction:
         self.cleanup(record, callback, phase="PREPARED")
         return "restored-old-pair"
 
-    def publish(self, target, expected, callback=None):
+    def publish(self, target, expected, callback=None, *, defer_commit=False):
         self.check()
+        need(
+            not defer_commit or self.OPERATION == "native-pin-bridge",
+            "only native pin bridge may defer commit",
+        )
         need(
             isinstance(target, list)
             and len(target) == 2
@@ -630,7 +646,7 @@ class Transaction:
         record = {
             "version": 1,
             "protocol": "dependencies-state-v1",
-            "operation": "capture-update",
+            "operation": self.OPERATION,
             "rootIdentity": self.root_id,
             "nonce": secrets.token_hex(32),
             "selectors": self.bindings,
@@ -683,6 +699,8 @@ class Transaction:
                 fault(callback, "stage-" + str(index) + "-owner-written")
             for index, (path, raw) in enumerate(zip(self.paths, target)):
                 self.guard_control(record, None)
+                if self.KEEP_PORTABLE and index == 1:
+                    continue
                 if raw is not None:
                     write(
                         self.stage_for(record, index) / ("new-" + str(index)),
@@ -709,7 +727,12 @@ class Transaction:
                     and self.modes() == new_modes[:index] + old_modes[index:],
                     "detected foreign precommit output change",
                 )
-                if path is not None:
+                if self.KEEP_PORTABLE and index == 1:
+                    need(
+                        raw == expected[index] and new_modes[index] == old_modes[index],
+                        "bridge portable output must remain unchanged",
+                    )
+                elif path is not None:
                     if raw is None:
                         path.unlink(missing_ok=True)
                     else:
@@ -725,6 +748,9 @@ class Transaction:
                 "published pair verification",
             )
             self.guard_control(record, "PREPARED")
+            if defer_commit:
+                fault(callback, "bridge-ready")
+                return record
             write(temporary, canonical(self.journal(record, "COMMITTED")))
             fault(callback, "commit-file-fsync")
             self.guard_control(record, "PREPARED")

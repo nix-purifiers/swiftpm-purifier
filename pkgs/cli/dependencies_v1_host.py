@@ -71,6 +71,7 @@ def runtime(
     hash_tree,
     native=selectors.DEFAULT,
     portable=selectors.DEFAULT,
+    evidence_parent=None,
 ):
     """Exercise the caller-selected runtime in an external, source-only arena.
 
@@ -120,7 +121,9 @@ def runtime(
         TMPDIR=str(temporary / "tmp"),
         CLANG_MODULE_CACHE_PATH=str(temporary / "clang-module-cache"),
     )
-    session = capture.NativeSession(probe, env, temporary.parent)
+    session = capture.NativeSession(
+        probe, env, temporary.parent if evidence_parent is None else evidence_parent
+    )
     package = api.native_command("swift-package")
     result = session.run("runtime-manifest", [*package, "--verbose", "dump-package"])
     compiler, description = manifest.invocation(

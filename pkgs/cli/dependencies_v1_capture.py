@@ -110,9 +110,20 @@ def native_pins(raw, state, allow_stale=False):
         cache.require(actual == expected, "native pin/checkouts identity join")
 
 
-def capture_basis(root, environment):
+def capture_basis(root, environment, hash_tree=None):
     """Distinguish an absent cache from an existing, fully validated cache."""
     cache.validate_environment(environment)
+    if os.path.lexists(root / "Packages"):
+        from dependencies_v1_ownership import existing, native_state, MARKER
+
+        cache.directory(root / "Packages")
+        cache.require(
+            os.path.lexists(root / "Packages" / MARKER), "unrecognized Packages state"
+        )
+        cache.require(
+            callable(hash_tree), "owned capture requires verified source hashes"
+        )
+        return {"owned": existing(root, hash_tree), "native": native_state(root)}
     if not os.path.lexists(root / ".build"):
         cache.require(
             not os.path.lexists(root / "Packages"), "unrecognized Packages state"
@@ -128,11 +139,128 @@ def capture_basis(root, environment):
     ]
 
 
-def verify_basis(root, environment, expected):
+def verify_basis(root, environment, expected, hash_tree=None):
     cache.require(
-        capture_basis(root, environment) == expected,
+        capture_basis(root, environment, hash_tree) == expected,
         "caller native metadata changed during capture",
     )
+
+
+def candidate(api, temporary, environment):
+    """Observe the native cache protocol using only a fresh owned local fixture.
+
+    Local Git here is probe input, never an admitted portable source location.
+    No project manifest, pin bytes or cache is read by this discriminator.
+    """
+    cache.require(not api.sdk_mode(), "format8 has no SDK-bound CLI capture")
+    temporary = layout.canonical(temporary)
+    cache.directory(temporary)
+    cache.validate_environment(environment)
+    leaf = temporary / "leaf"
+    (leaf / "Sources/Leaf").mkdir(parents=True)
+    (leaf / "Package.swift").write_text(
+        '// swift-tools-version:4.0\nimport PackageDescription\nlet package = Package(name: "ProtocolLeaf", products: [.library(name: "Leaf", targets: ["Leaf"])], targets: [.target(name: "Leaf")])\n'
+    )
+    (leaf / "Sources/Leaf/Leaf.swift").write_text(
+        "public func leaf() -> Int { return 42 }\n"
+    )
+    root = temporary / "root"
+    root.mkdir()
+    location = leaf.as_uri()
+    import json
+
+    (root / "Package.swift").write_text(
+        '// swift-tools-version:4.0\nimport PackageDescription\nlet package = Package(name: "ProtocolRoot", dependencies: [.package(url: '
+        + json.dumps(location)
+        + ', from: "1.0.0")])\n'
+    )
+    (root / "Sources").mkdir()
+    (root / "Sources/main.swift").write_text("print(42)\n")
+    (temporary / "tmp").mkdir()
+    env = dict(
+        environment,
+        TMPDIR=str(temporary / "tmp"),
+        CLANG_MODULE_CACHE_PATH=str(temporary / "clang-module-cache"),
+    )
+    session = NativeSession(root, env, temporary.parent)
+    git = [
+        api.tool("git"),
+        "-c",
+        "core.hooksPath=/dev/null",
+        "-c",
+        "commit.gpgsign=false",
+        "-c",
+        "tag.gpgsign=false",
+    ]
+    session.run("protocol-git-init", [*git, "init", str(leaf)])
+    session.run("protocol-git-add", [*git, "-C", str(leaf), "add", "."])
+    session.run(
+        "protocol-git-commit",
+        [
+            *git,
+            "-c",
+            "user.name=Purifier protocol fixture",
+            "-c",
+            "user.email=protocol@example.invalid",
+            "-C",
+            str(leaf),
+            "commit",
+            "-m",
+            "Native cache protocol observation",
+        ],
+    )
+    session.run("protocol-git-tag", [*git, "-C", str(leaf), "tag", "1.0.0"])
+    revision = (
+        session.run("protocol-git-head", [*git, "-C", str(leaf), "rev-parse", "HEAD"])
+        .stdout.decode()
+        .strip()
+    )
+    result = session.run(
+        "protocol-native-fetch",
+        [*api.native_command("swift-package"), "fetch"],
+        success=False,
+        timeout=60,
+    )
+    accepted = False
+    state_path = root / ".build/dependencies-state.json"
+    if result.returncode == 0 and os.path.lexists(state_path):
+        state = cache.decode(
+            cache.regular_bytes(root, ".build/dependencies-state.json")
+        )
+        if (
+            isinstance(state, dict)
+            and type(state.get("version")) is int
+            and state["version"] == 1
+        ):
+            body = state.get("object")
+            dependencies = body.get("dependencies", []) if isinstance(body, dict) else []
+            if (
+                isinstance(dependencies, list)
+                and len(dependencies) == 1
+                and isinstance(dependencies[0], dict)
+            ):
+                dep = dependencies[0]
+                accepted = (
+                    dep.get("name") == "ProtocolLeaf"
+                    and dep.get("repositoryURL") == location
+                    and dep.get("state")
+                    == {
+                        "name": "checkout",
+                        "checkoutState": {
+                            "branch": None,
+                            "revision": revision,
+                            "version": "1.0.0",
+                        },
+                    }
+                    and not os.path.lexists(root / ".build/workspace-state.json")
+                )
+    session.receipt.update(
+        complete=True,
+        candidate=accepted,
+        scope="Owned local-Git native cache protocol discriminator only; not portable local-source support",
+    )
+    session.save()
+    return accepted
 
 
 def prepare(
@@ -153,10 +281,29 @@ def prepare(
     initial_manifest = common.manifest_hash(root)
     env = dict(os.environ)
     cache.require("SWIFTPM_BUILD_DIR" not in env, "external native build directory")
-    initial_basis = capture_basis(root, env)
+    (temporary / "tmp").mkdir()
+    env.update(
+        TMPDIR=str(temporary / "tmp"),
+        CLANG_MODULE_CACHE_PATH=str(temporary / "clang-module-cache"),
+    )
+    session = None
+    hash_counter = 0
+
+    def owned_hash(path):
+        nonlocal hash_counter
+        hash_counter += 1
+        return common.hash_path(
+            session, api, "caller-owned-source-" + str(hash_counter), path
+        )
+
+    if os.path.lexists(root / "Packages"):
+        session = NativeSession(root, env, temporary.parent)
+    initial_basis = capture_basis(
+        root, env, owned_hash if session is not None else None
+    )
     native_pin_records(pin.raw)
     package = temporary / root.name
-    if initial_basis is None:
+    if initial_basis is None or isinstance(initial_basis, dict):
         shutil.copytree(
             root,
             package,
@@ -177,14 +324,13 @@ def prepare(
         projected.unlink(missing_ok=True)
     else:
         projected.write_bytes(pin.raw)
-    (temporary / "tmp").mkdir()
-    env.update(
-        TMPDIR=str(temporary / "tmp"),
-        CLANG_MODULE_CACHE_PATH=str(temporary / "clang-module-cache"),
-    )
-    session = NativeSession(package, env, temporary.parent)
+    if session is None:
+        session = NativeSession(package, env, temporary.parent)
+    else:
+        session.cwd = package
+        session.env = dict(env)
     package_command = api.native_command("swift-package")
-    if initial_basis is not None:
+    if isinstance(initial_basis, list):
         cache.validate(package, session.env)
     session.run(
         "native-resolution",
@@ -395,7 +541,12 @@ def prepare(
         and common.manifest_hash(root) == initial_manifest,
         "caller source currency changed during capture",
     )
-    verify_basis(root, env, initial_basis)
+    verify_basis(
+        root,
+        env,
+        initial_basis,
+        owned_hash if isinstance(initial_basis, dict) else None,
+    )
     session.receipt.update(
         complete=True,
         protocol="dependencies-state-v1",
@@ -417,10 +568,11 @@ def capture_and_publish(
 ):
     """Recover before native observation, then publish the prepared file pair."""
     from dependencies_v1_transaction import Transaction, canonical
+    from dependencies_v1_lifecycle import recover_locked
 
     cache.require(not api.sdk_mode(), "format8 SDK-bound CLI capture is unavailable")
     with Transaction(root, registry, native, portable).locked() as transaction:
-        recovery = transaction.recover()
+        recovery = recover_locked(transaction)
         expected = transaction.pair()
         lock, new_native, session = prepare(
             root, temporary, api, update, native, portable
