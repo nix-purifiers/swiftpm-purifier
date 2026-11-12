@@ -200,7 +200,12 @@ let
         # nixpkgs' install phase installs executables and dynamic libraries;
         # static libraries are installed here.
         postInstall = ''
-          products=$(swift build -c ${buildConfig} --show-bin-path)
+          products=${
+            if read.lockVersion == 6 then
+              lib.escapeShellArg ".build/${buildConfig}"
+            else
+              "$(swift build -c ${buildConfig} --show-bin-path)"
+          }
           for library in ${lib.escapeShellArgs staticLibraries}; do
             install -D -t "$out/lib" "$products/lib$library.a"
             for module in "$products"/Modules/*.swiftmodule "$products"/*.swiftmodule; do
@@ -214,6 +219,9 @@ let
           inherit (read) lock;
           inherit tree;
         };
+      }
+      // lib.optionalAttrs (read.lockVersion == 6) {
+        swiftpmPurifierProducts = writeText "legacy-native-products.json" (builtins.toJSON read.products);
       }
       // builtins.removeAttrs extraArgs [
         "nativeBuildInputs"
