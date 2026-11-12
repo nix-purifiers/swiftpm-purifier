@@ -22,6 +22,47 @@ permissions:
   contents: read
 
 jobs:
+  legacy-state-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Prepare the explicit historical runtime fixture
+        env:
+          LEGACY_SOURCE: ${{ github.workspace }}
+        run: |
+          nix build --impure --no-link --json --expr '
+            let
+              f = builtins.getFlake ("path:" + builtins.getEnv "LEGACY_SOURCE");
+              p = import f.inputs.nixpkgs { system = builtins.currentSystem; };
+            in import (f.outPath + "/tests/sdk/swift424/default.nix") { pkgs = p; }
+          ' > "$RUNNER_TEMP/legacy-runtime-build.json"
+          runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/legacy-runtime-build.json")
+          mkdir -p "$RUNNER_TEMP/legacy-sdk-metadata"
+          cp "$runtime/original-tool-bytes.json" "$runtime/original-runtime-bytes.json" "$runtime/original-header-relocations.json" "$RUNNER_TEMP/legacy-sdk-metadata/"
+      - name: Exercise installed runtime capture and cold dependency replay
+        run: |
+          runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/legacy-runtime-build.json")
+          python3 tests/legacy-state-lifecycle.py --runtime-prefix "$runtime" --pure --output "$RUNNER_TEMP/legacy-state"
+      - name: Retain historical runtime and replay evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: legacy-state-swift424
+          path: |
+            ${{ runner.temp }}/legacy-runtime-build.json
+            ${{ runner.temp }}/legacy-sdk-metadata
+            ${{ runner.temp }}/legacy-state/receipt.json
+            ${{ runner.temp }}/legacy-state/logs
+            ${{ runner.temp }}/legacy-state/native-dependencies-state.json
+            ${{ runner.temp }}/legacy-state/original/Package.resolved
+            ${{ runner.temp }}/legacy-state/original/swiftpm-purifier.lock.json
+            ${{ runner.temp }}/legacy-state/relocated/Package.resolved
+            ${{ runner.temp }}/legacy-state/relocated/swiftpm-purifier.lock.json
+            ${{ runner.temp }}/legacy-state/relocated/.build/swiftpm-purifier/observed-host-runtime.json
+          if-no-files-found: error
+
   host-runtime-lifecycle:
     runs-on: ubuntu-latest
     timeout-minutes: 45
