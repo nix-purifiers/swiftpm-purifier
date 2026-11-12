@@ -19,7 +19,7 @@
   selectedSDK ? null,
   fetchers ? { },
   lockFile ? src + "/swiftpm-purifier.lock.json",
-  packageResolved ? src + "/Package.resolved",
+  packageResolved ? null,
   artifactBuildInputs ? [ ],
 }:
 let

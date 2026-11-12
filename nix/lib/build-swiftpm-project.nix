@@ -63,7 +63,7 @@
   fetchers ? { },
   lockFile ? src + "/swiftpm-purifier.lock.json",
   # SwiftPM's lockfile, which a flake can keep outside `src`.
-  packageResolved ? src + "/Package.resolved",
+  packageResolved ? null,
   buildConfig ? "release",
   artifactBuildInputs ? [ ],
   # Explicit assertion that these locked dynamic products expose a public C ABI.
@@ -94,8 +94,9 @@ let
 
   # Links the tree into the package root and fills in the workspace state.
   linkTree = ''
-    ${lib.optionalString (builtins.pathExists packageResolved) ''
-      cp --no-preserve=mode ${packageResolved} Package.resolved
+    ${lib.optionalString (builtins.pathExists read.toolLockFile) ''
+      ${lib.optionalString (read.lockVersion == 6) "rm -f ${lib.escapeShellArg read.toolLockName}"}
+      cp --no-preserve=mode ${read.toolLockFile} ${lib.escapeShellArg read.toolLockName}
     ''}
     for entry in $(cd ${tree} && find . -mindepth 1 -type l -printf '%P\n'); do
       mkdir -p "$(dirname "$entry")"

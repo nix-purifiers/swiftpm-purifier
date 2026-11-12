@@ -586,7 +586,7 @@ class ReadLock(unittest.TestCase):
 
     def test_another_format_version_is_refused(self):
         lock = {key: None for key in sp.LOCK_KEYS}
-        lock["version"] = sp.LOCK_VERSION + 1
+        lock["version"] = max(sp.LOCK_VERSION, sp.legacy_state.FORMAT) + 1
         self.write(json.dumps(lock))
         self.assert_refused("lock format version")
 

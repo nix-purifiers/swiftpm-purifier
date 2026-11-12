@@ -60,6 +60,7 @@ stdenvNoCC.mkDerivation {
       ./swiftpm_purifier.py
       ./bounded_native.py
       ./legacy_manifest.py
+      ./legacy_state.py
       ./native_sdk.py
       ./host_runtime.py
       ./test_swiftpm_purifier.py
@@ -86,6 +87,7 @@ stdenvNoCC.mkDerivation {
     cp pkgs/cli/swiftpm_purifier.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/bounded_native.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/legacy_manifest.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/legacy_state.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/native_sdk.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/host_runtime.py $out/libexec/swiftpm-purifier/
     # SWIFTPM_PURIFIER_FLAKE is this flake's source, whose package set the
