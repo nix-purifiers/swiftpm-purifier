@@ -49,7 +49,16 @@ baseline = layout.source_layout(base)["hash"]
 manifest_before = hashlib.sha256((base / "Package.swift").read_bytes()).hexdigest()
 
 
-def run(name, root, valid=True, same=True, selected=None, store=False, pure_flake=None):
+def run(
+    name,
+    root,
+    valid=True,
+    same=True,
+    selected=None,
+    store=False,
+    pure_flake=None,
+    generated_system=None,
+):
     try:
         python = layout.source_layout(root, selected)
     except layout.LayoutError as error:
@@ -74,6 +83,19 @@ def run(name, root, valid=True, same=True, selected=None, store=False, pure_flak
             "let f=builtins.getFlake "
             + json.dumps(str(pure_flake))
             + '; in import (f.outPath+"/nix/lib/pre-workspace-layout.nix") {src=f.outPath+"/tests/fixtures/pre-workspace-layout";'
+            + ('lockFile=f.outPath+"/flake.lock";' if selected is not None else "")
+            + "}"
+        )
+    if generated_system is not None:
+        expression = (
+            "let f=builtins.getFlake "
+            + json.dumps(str(pure_flake))
+            + ";pkgs=import f.inputs.nixpkgs {system="
+            + json.dumps(str(generated_system))
+            + ";};"
+            'generated=pkgs.runCommand "preworkspace-generated-layout" {src=f.outPath+"/tests/fixtures/pre-workspace-layout";} '
+            '\'\'mkdir -p "$out"; cp -R "$src/." "$out/"\'\';'
+            'in import (f.outPath+"/nix/lib/pre-workspace-layout.nix") {src=generated;'
             + ('lockFile=f.outPath+"/flake.lock";' if selected is not None else "")
             + "}"
         )
@@ -348,6 +370,18 @@ run(
     fixture,
     selected=source / "flake.lock",
     pure_flake=locked_flake,
+)
+system = setup(
+    "host-system",
+    ["nix", "eval", "--impure", "--raw", "--expr", "builtins.currentSystem"],
+)
+run("pure-generated-default", fixture, pure_flake=locked_flake, generated_system=system)
+run(
+    "pure-generated-external",
+    fixture,
+    selected=source / "flake.lock",
+    pure_flake=locked_flake,
+    generated_system=system,
 )
 r["complete"] = True
 save()

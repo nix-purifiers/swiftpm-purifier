@@ -34,7 +34,10 @@ let
       # Reading / or /nix/store with a truncated object context is invalid and
       # would also escape the source boundary during pure evaluation.
       anchorParts = if stored then builtins.genList (i: builtins.elemAt parts i) storeParts else [ ];
-      anchor = if stored then "/" + builtins.concatStringsSep "/" anchorParts else "";
+      anchorText = if stored then "/" + builtins.concatStringsSep "/" anchorParts else "";
+      # split/concatenation may lose the output reference. Reattach exactly
+      # the original source context before inspecting or realizing its root.
+      anchor = builtins.appendContext anchorText (builtins.getContext text);
       remaining =
         if stored then
           builtins.genList (i: builtins.elemAt parts (i + storeParts)) (builtins.length parts - storeParts)
