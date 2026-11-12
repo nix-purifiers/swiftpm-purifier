@@ -633,7 +633,7 @@ def subpath_of(pin: dict) -> str:
     return base.removesuffix(".git")
 
 
-def record_of(pin: dict, name: str) -> dict:
+def record_of(pin: dict, name: str, state_version=None) -> dict:
     """The workspace-state record of a pinned dependency marked as edited,
     as lock.nix derives it from the pin and the package name the lockfile
     records."""
@@ -645,6 +645,14 @@ def record_of(pin: dict, name: str) -> dict:
         "name": name,
     }
     subpath = subpath_of(pin)
+    if state_version == 2:
+        ref = {
+            "identity": pin["identity"],
+            "isLocal": False,
+            "name": name,
+            "path": pin["location"],
+        }
+        subpath = name
     state = (
         {"name": "registryDownload", "version": pin["state"]["version"]}
         if registry
@@ -666,7 +674,9 @@ def record_of(pin: dict, name: str) -> dict:
     }
 
 
-def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
+def lock_pin(
+    pin: dict, dependency: dict, package: Path, config: Path, state_version=None
+) -> dict:
     """The lockfile's record of one pin of Package.resolved: what a build
     needs beyond the pin. `dependency` is SwiftPM's workspace-state record
     of the same dependency, which the record lock.nix derives must equal."""
@@ -686,7 +696,24 @@ def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
         raise PurifierError(
             f"{identity}: version-1 package name disagrees with native workspace state"
         )
-    derived = record_of(pin, ref["name"])
+    derived = record_of(pin, ref["name"], state_version)
+    if state_version == 2:
+        if (
+            kind != "remote"
+            or dependency.get("basedOn") is not None
+            or not isinstance(ref.get("name"), str)
+            or re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", ref["name"]) is None
+            or not isinstance(dependency.get("subpath"), str)
+            or re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", dependency["subpath"])
+            is None
+        ):
+            raise PurifierError(
+                "unsupported or unsafe native dependency-state format-2 checkout"
+            )
+        # The old native checkout subpath contains an opaque repository hash.
+        # Edited dependencies use the package name; the dormant basedOn checkout
+        # can use that same deterministic path (verified with native SwiftPM).
+        dependency = dict(dependency, subpath=ref["name"])
     recorded = {
         "basedOn": dict(dependency, basedOn=None),
         "packageRef": ref,
@@ -756,7 +783,11 @@ def products(package: Path, env, isolation):
     )
     result = []
     for product in description["products"]:
-        kind, detail = next(iter(product["type"].items()))
+        if "product_type" in product:
+            kind = product["product_type"]
+            detail = [product["type"]] if product.get("type") else []
+        else:
+            kind, detail = next(iter(product["type"].items()))
         entry = {"name": product["name"], "type": kind}
         if kind == "library":
             entry["linkage"] = detail[0] if detail else "automatic"
@@ -812,13 +843,31 @@ def relock(root: Path, update=None):
             legacy_state = package / ".build" / "dependencies-state.json"
             if legacy_state.exists():
                 version = read_json(legacy_state).get("version")
+                if version != 2:
+                    raise PurifierError(
+                        f"SwiftPM dependency-state format {version} is not supported by this purifier"
+                    )
+                state_path = legacy_state
+            else:
                 raise PurifierError(
-                    f"SwiftPM dependency-state format {version} is not yet supported by this purifier"
+                    "SwiftPM did not produce a recognized dependency-state file"
                 )
-            raise PurifierError(
-                "SwiftPM did not produce a recognized dependency-state file"
-            )
         state = json.loads(state_path.read_text())
+        if state["version"] == 2:
+            names = []
+            for dependency in state["object"]["dependencies"]:
+                ref = dependency.get("packageRef", {})
+                if ref.get("isLocal") is not False:
+                    raise PurifierError(
+                        "dependency-state format 2 currently requires remote checkout dependencies"
+                    )
+                names.append(ref.get("name"))
+            if any(not isinstance(name, str) for name in names) or len(
+                set(names)
+            ) != len(names):
+                raise PurifierError(
+                    "dependency-state format 2 has missing or duplicate package names"
+                )
         config = work / "config"
         recorded = {}
         for dependency in state["object"]["dependencies"]:
@@ -834,8 +883,9 @@ def relock(root: Path, update=None):
         legacy_identities = {}
         for identity, dependency in recorded.items():
             ref = dependency["packageRef"]
-            if ref["kind"] == "remote":
-                location = ref["location"]
+            legacy_ref = state["version"] == 2 and ref.get("isLocal") is False
+            if legacy_ref or ref.get("kind") == "remote":
+                location = ref["path"] if legacy_ref else ref["location"]
                 if location in legacy_identities:
                     raise PurifierError("native workspace repeats a source location")
                 legacy_identities[location] = identity
@@ -846,7 +896,9 @@ def relock(root: Path, update=None):
                 raise PurifierError(
                     f"Package.resolved pins {pin['identity']}, which SwiftPM's workspace state lacks"
                 )
-            pins[pin["identity"]] = lock_pin(pin, dependency, package, config)
+            pins[pin["identity"]] = lock_pin(
+                pin, dependency, package, config, state["version"]
+            )
         # What remains are the path dependencies, which Package.resolved
         # does not list.
         local = []
@@ -1061,9 +1113,10 @@ def unlink(root: Path):
             link.unlink()
     if (root / STATE_DIR / "links.json").exists():
         for scratch in SCRATCH_DIRECTORIES:
-            state = root / scratch / "workspace-state.json"
-            if state.exists():
-                state.unlink()
+            for filename in ("workspace-state.json", "dependencies-state.json"):
+                state = root / scratch / filename
+                if state.exists():
+                    state.unlink()
     shutil.rmtree(root / STATE_DIR, ignore_errors=True)
 
 
@@ -1184,7 +1237,12 @@ def prefetch(root: Path):
     )
     for scratch in SCRATCH_DIRECTORIES:
         (root / scratch).mkdir(parents=True, exist_ok=True)
-        (root / scratch / "workspace-state.json").write_text(state)
+        filename = (
+            "dependencies-state.json"
+            if json.loads(state)["version"] == 2
+            else "workspace-state.json"
+        )
+        (root / scratch / filename).write_text(state)
     (root / STATE_DIR / "links.json").write_text(json.dumps(links) + "\n")
 
 

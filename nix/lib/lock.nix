@@ -199,6 +199,33 @@ let
       "swiftpm-purifier: ${toString lockFile} does not match its contentHash, so it was changed after the lock run wrote it. ${relock}"
     else if lock.version == supportedVersion && sdkContract.problem != null then
       "swiftpm-purifier: ${sdkContract.problem}. ${relock}"
+    else if
+      lock.workspaceStateVersion == 2
+      && (
+        (resolved.version or null) != 1
+        || lock.localDependencies != [ ]
+        || lock.binaryTargets != [ ]
+        || !(builtins.all (
+          identity:
+          let
+            name = lock.pins.${identity}.name or null;
+          in
+          builtins.isString name && builtins.match "[A-Za-z0-9_][A-Za-z0-9_.-]*" name != null
+        ) (builtins.attrNames lock.pins))
+        ||
+          builtins.length (
+            builtins.attrNames (
+              builtins.listToAttrs (
+                map (identity: {
+                  name = lock.pins.${identity}.name;
+                  value = true;
+                }) (builtins.attrNames lock.pins)
+              )
+            )
+          ) != builtins.length (builtins.attrNames lock.pins)
+      )
+    then
+      "swiftpm-purifier: unsupported or unsafe dependency-state format-2 lock. ${relock}"
     else if lock.manifestHash != manifestHash then
       "swiftpm-purifier: ${toString lockFile} is out of date with Package.swift in ${toString src}. Run `swiftpm-purifier lock`."
     else if
@@ -238,11 +265,21 @@ let
       in
       if unsuffixed == null then base else builtins.head unsuffixed;
 
-  packageRefOf = pin: {
-    inherit (pin) identity kind;
-    location = if isRegistry pin then pin.identity else pin.location;
-    inherit (lock.pins.${pin.identity}) name;
-  };
+  packageRefOf =
+    pin:
+    if lock.workspaceStateVersion == 2 then
+      {
+        inherit (pin) identity;
+        isLocal = false;
+        path = pin.location;
+        inherit (lock.pins.${pin.identity}) name;
+      }
+    else
+      {
+        inherit (pin) identity kind;
+        location = if isRegistry pin then pin.identity else pin.location;
+        inherit (lock.pins.${pin.identity}) name;
+      };
 
   checkoutStateOf =
     pin:
@@ -260,7 +297,7 @@ let
   recordOf =
     pin:
     let
-      subpath = subpathOf pin;
+      subpath = if lock.workspaceStateVersion == 2 then lock.pins.${pin.identity}.name else subpathOf pin;
       packageRef = packageRefOf pin;
     in
     {
@@ -282,7 +319,7 @@ let
       locked = lock.pins.${pin.identity};
     in
     {
-      path = "Packages/${subpathOf pin}";
+      path = "Packages/${if lock.workspaceStateVersion == 2 then locked.name else subpathOf pin}";
       inherit (locked) hash;
     }
     // (
@@ -385,4 +422,6 @@ in
     // (if (resolved.version or null) == 1 then { } else { prebuilts = [ ]; });
     version = lock.workspaceStateVersion;
   };
+  workspaceStateFile =
+    if lock.workspaceStateVersion == 2 then "dependencies-state.json" else "workspace-state.json";
 }
