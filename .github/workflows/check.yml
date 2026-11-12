@@ -128,6 +128,64 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
 
+  pre-workspace-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Prepare the explicit historical runtime fixture
+        env:
+          LEGACY_SOURCE: ${{ github.workspace }}
+        run: |
+          nix build --impure --no-link --json --expr '
+            let
+              f = builtins.getFlake ("path:" + builtins.getEnv "LEGACY_SOURCE");
+              p = import f.inputs.nixpkgs { system = builtins.currentSystem; };
+            in import (f.outPath + "/tests/sdk/swift302/default.nix") { pkgs = p; }
+          ' > "$RUNNER_TEMP/preworkspace-runtime-build.json"
+          runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/preworkspace-runtime-build.json")
+          mkdir -p "$RUNNER_TEMP/preworkspace-sdk-metadata"
+          cp "$runtime/original-tool-bytes.json" "$runtime/original-runtime-bytes.json" "$runtime/original-header-relocations.json" "$RUNNER_TEMP/preworkspace-sdk-metadata/"
+      - name: Exercise installed runtime capture and cold dependency replay
+        run: |
+          python3 tests/pre-workspace-state-parity.py --output "$RUNNER_TEMP/preworkspace-readers"
+          runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/preworkspace-runtime-build.json")
+          python3 tests/pre-workspace-native-lifecycle.py --runtime-prefix "$runtime" --pure --output "$RUNNER_TEMP/preworkspace-state"
+      - name: Retain historical runtime and replay evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: preworkspace-state-swift302
+          path: |
+            ${{ runner.temp }}/preworkspace-runtime-build.json
+            ${{ runner.temp }}/preworkspace-sdk-metadata
+            ${{ runner.temp }}/preworkspace-readers
+            ${{ runner.temp }}/preworkspace-state/receipt.json
+            ${{ runner.temp }}/preworkspace-state/logs
+            ${{ runner.temp }}/preworkspace-state/http-bodies
+            ${{ runner.temp }}/preworkspace-state/cold-objects
+            ${{ runner.temp }}/preworkspace-state/owned-install-controls
+            ${{ runner.temp }}/preworkspace-state/git-confinement-controls
+            ${{ runner.temp }}/preworkspace-state/git-index-controls
+            ${{ runner.temp }}/preworkspace-state/fixture-before-capture
+            ${{ runner.temp }}/preworkspace-state/leaf/Package.swift
+            ${{ runner.temp }}/preworkspace-state/leaf/Sources
+            ${{ runner.temp }}/preworkspace-state/remote
+            ${{ runner.temp }}/preworkspace-state/original/swiftpm-purifier.lock.json
+            ${{ runner.temp }}/preworkspace-state/relocated/Package.swift
+            ${{ runner.temp }}/preworkspace-state/relocated/Sources
+            ${{ runner.temp }}/preworkspace-state/relocated/Tests
+            ${{ runner.temp }}/preworkspace-state/relocated/Packages
+            ${{ runner.temp }}/preworkspace-state/relocated/swiftpm-purifier.lock.json
+            ${{ runner.temp }}/preworkspace-state/relocated/.build/swiftpm-purifier
+            ${{ runner.temp }}/preworkspace-state/tmp/swiftpm-purifier-preworkspace-*/receipt.json
+            ${{ runner.temp }}/preworkspace-state/tmp/swiftpm-purifier-preworkspace-*/logs
+            ${{ runner.temp }}/preworkspace-state/tmp/swiftpm-purifier-preworkspace-*/native-graph.json
+            ${{ runner.temp }}/preworkspace-state/tmp/swiftpm-purifier-preworkspace-*/native-build-plan.yaml
+          include-hidden-files: true
+          if-no-files-found: error
+
   host-runtime-lifecycle:
     runs-on: ubuntu-latest
     timeout-minutes: 45

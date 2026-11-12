@@ -38,7 +38,8 @@ For persistent use, add these packages through your usual Nix configuration.
 `swiftpm-purifier swift build`, `swiftpm-purifier swift test` and
 `swiftpm-purifier swift run` delegate to the installed runtime on the
 locked dependencies. Prefetch links them into `Packages/` and
-`.build/artifacts/` from the Nix store.
+`.build/artifacts/` from the Nix store. The pre-workspace Git protocol
+instead installs verified, owned copies with their real Git metadata.
 
 If you intentionally want a packaged runtime,
 `nix shell 'github:nix-purifiers/swiftpm-purifier#toolchain'` provides an
@@ -182,9 +183,10 @@ The standalone CLI uses the Swift runtime already selected by your PATH and
 `SWIFT_EXEC`. It keeps that runtime during capture, dependency prefetch and
 `swiftpm-purifier swift` commands. Management tools are added after the
 original PATH. No packaged Swift SDK is required for this local workflow.
-Local locks use portable format 4, or format 6 for original workspace-state
-version 1 with `Package.pins`; runtime observations live under `.build`
-for diagnostics and do not bind the lock to a host binary or SDK version.
+Local locks use portable format 4, format 6 for original workspace-state
+version 1 with `Package.pins`, or format 7 for the pre-workspace Git
+protocol. Runtime observations are diagnostic and do not bind the lock
+to a host binary or SDK version.
 Native manifest and dependency requirements are checked by the selected
 SwiftPM and compiler.
 
@@ -229,12 +231,47 @@ require a debug build; release program builds are checked separately.
 These fixture versions do not restrict the
 runtime selected for local commands.
 
+The pre-workspace protocol has no native dependency-state file. Portable
+format 7 captures the actual native dependency graph, Git revisions,
+source trees and full Git metadata. Capture preserves an existing native
+`Packages` cache in its owned temporary copy; `update` explicitly asks
+the native package manager to change that selection. A bounded native
+build supplies the authoritative product and module plan before the
+purifier writes the lock. Compiler and Git failures remain native failures.
+
+Format 7 requires `Package.pins` and `Package.resolved` to remain absent;
+native lockfile overrides and mixed workspace metadata are rejected. It
+binds manifest bytes and the structural source layout, including empty
+directories, so adding or renaming an implicit module requires relocking.
+Use the default root purifier lock or a fully external `--lockfile`.
+External/shared Git object stores and aliased build outputs are rejected.
+
+Prefetch installs full, owned Git checkouts transactionally. It refuses
+to replace an unowned or edited `Packages` cache; move an existing native
+cache aside first. Repeated prefetch preserves unchanged owned bytes,
+and uninstall removes only verified owned dependencies. Actual Git
+constructs each checkout's index from its verified commit. Normal index
+stat-cache refreshes are accepted after checking index entries against
+the commit; staged content or mode changes are refused. Ownership travels
+with the dependency cache, so native build-artifact cleaning preserves it.
+Local commands
+keep the selected developer runtime. Format 7 has no SDK-bound capture
+mode; pure builds can explicitly select an immutable SDK separately.
+Older format 4, 5 and 6 readers reject format 7.
+
+The original Swift 3.0.2 compiler and package manager are a Linux fixture
+point for this protocol, including debug XCTest, release programs,
+multi-module static/dynamic libraries and executable aliases. This is
+an individual fixture point, not a claim about every historical release
+or Darwin runtime.
+
 `lib.swiftpm-purifier.readLock { src, lockFile ? ..., packageResolved ? ... }`
 gives the lock in memory of the purifier contract:
 `{ purifier, entries, outputs, problems }`. `problems` is empty for a usable
 lock.
 
-We recommend committing both lockfiles to the repository of the project.
+We recommend committing the purifier lock and any native lockfile the
+project's protocol uses to the repository of the project.
 The builder and the commands look for them there by default.
 
 A flake can instead keep a build external: the flake that calls the builder

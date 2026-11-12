@@ -28,6 +28,8 @@ import native_sdk
 import host_runtime
 import legacy_manifest
 import legacy_state
+import pre_workspace
+import pre_workspace_install
 
 LOCK_NAME = "swiftpm-purifier.lock.json"
 LOCK_VERSION = 5
@@ -35,10 +37,38 @@ LEGACY_LOCK_VERSION = 4
 # The lockfile `--lockfile` names, or for the `swift` verb
 # SWIFTPM_PURIFIER_LOCKFILE; without either, the lockfile in the package.
 LOCK_OVERRIDE = os.environ.get("SWIFTPM_PURIFIER_LOCKFILE")
+RAW_LOCK_OVERRIDE = (
+    None
+    if LOCK_OVERRIDE is None
+    else LOCK_OVERRIDE
+    if os.path.isabs(LOCK_OVERRIDE)
+    else os.path.join(os.getcwd(), LOCK_OVERRIDE)
+)
+RAW_SOURCE_REFERENCE = None
 
 
 def lock_path(root: Path) -> Path:
     return Path(LOCK_OVERRIDE).resolve() if LOCK_OVERRIDE else root / LOCK_NAME
+
+
+def purifier_lock_reference(root):
+    if RAW_LOCK_OVERRIDE is None:
+        return root / LOCK_NAME
+    return RAW_LOCK_OVERRIDE
+
+
+def source_reference(root):
+    return RAW_SOURCE_REFERENCE if RAW_SOURCE_REFERENCE is not None else root
+
+
+def validate_pre_workspace(root, raw):
+    try:
+        pre_workspace.layout.canonical(source_reference(root))
+        return pre_workspace.validate_raw(
+            raw, root, TOOL_LOCK_OVERRIDE, purifier_lock_reference(root)
+        )
+    except (pre_workspace.StateError, pre_workspace.layout.LayoutError) as error:
+        raise PurifierError(str(error) + "; run `swiftpm-purifier relock`") from error
 
 
 # The copy of Package.resolved that `--tool-lockfile` or
@@ -226,6 +256,9 @@ def pinned_at(pin: dict) -> str:
 def is_current(root: Path, lock: dict) -> bool:
     """Whether the lockfile covers the pins of Package.resolved, as
     lock.nix checks, and the manifests the lock run saw."""
+    if lock.get("version") == pre_workspace.FORMAT:
+        validate_pre_workspace(root, json.dumps(lock, ensure_ascii=False).encode())
+        return True
     if lock.get("version") == legacy_state.FORMAT:
         try:
             legacy_state.validate(lock, legacy_native_path(root))
@@ -373,11 +406,14 @@ def selected_host_runtime():
         raise PurifierError(str(error)) from error
 
 
-def observe_host_runtime():
+def observe_host_runtime(*, pre_workspace_protocol=False):
     work = Path(tempfile.mkdtemp(prefix="swiftpm-purifier-host-"))
     try:
         observation = host_runtime.observe(
-            selected_host_runtime(), os.environ, work / "observation", native_options
+            selected_host_runtime(),
+            os.environ,
+            work / "observation",
+            None if pre_workspace_protocol else native_options,
         )
     except Exception as error:
         raise PurifierError(
@@ -387,7 +423,23 @@ def observe_host_runtime():
     return observation
 
 
+def observe_pre_workspace_runtime():
+    # This independently exercised protocol has no modern option-parser
+    # attestation. Observe the actual selected tools and version outputs.
+    return observe_host_runtime(pre_workspace_protocol=True)
+
+
 def require_runtime(root, lock):
+    if lock["version"] == pre_workspace.FORMAT:
+        if sdk_mode():
+            raise PurifierError(
+                "portable format 7 has no SDK-bound local runtime contract"
+            )
+        validate_pre_workspace(root, lock_path(root).read_bytes())
+        try:
+            return pre_workspace.validate_runtime(root, lock, sys.modules[__name__])
+        except (pre_workspace.StateError, legacy_manifest.ManifestError) as error:
+            raise PurifierError(str(error)) from error
     if sdk_mode():
         require_native_sdk(lock)
         return None
@@ -657,6 +709,12 @@ def read_lock(root: Path):
         raise PurifierError(
             f"{path} is not valid JSON ({error}); run `swiftpm-purifier relock` to write it again"
         )
+    if (
+        isinstance(lock, dict)
+        and type(lock.get("version")) is int
+        and lock["version"] == pre_workspace.FORMAT
+    ):
+        return validate_pre_workspace(root, path.read_bytes())
     missing = (
         [key for key in LOCK_KEYS if key not in lock]
         if isinstance(lock, dict)
@@ -673,7 +731,7 @@ def read_lock(root: Path):
     ):
         raise PurifierError(
             f"{path} has lock format version {lock['version']}, and this swiftpm-purifier reads "
-            f"versions {LEGACY_LOCK_VERSION}, {LOCK_VERSION} and {legacy_state.FORMAT}; run `swiftpm-purifier relock`"
+            f"versions {LEGACY_LOCK_VERSION}, {LOCK_VERSION}, {legacy_state.FORMAT} and {pre_workspace.FORMAT}; run `swiftpm-purifier relock`"
         )
     if lock["version"] == legacy_state.FORMAT:
         try:
@@ -959,10 +1017,21 @@ def relock(root: Path, update=None):
     Package.resolved; with `update`, a list of package identities, SwiftPM
     updates those packages first, or every package for an empty list."""
     sdk_identity = native_sdk_identity() if sdk_mode() else None
-    if not sdk_mode():
-        observe_host_runtime()
     with tempfile.TemporaryDirectory(prefix="swiftpm-purifier-") as temporary:
         work = Path(temporary)
+        probe = work / "protocol-probe"
+        probe.mkdir()
+        try:
+            if pre_workspace.candidate(sys.modules[__name__], probe, os.environ):
+                return pre_workspace.capture(root, work, sys.modules[__name__], update)
+        except (
+            pre_workspace.StateError,
+            pre_workspace.layout.LayoutError,
+            legacy_manifest.ManifestError,
+        ) as error:
+            raise PurifierError(str(error)) from error
+        if not sdk_mode():
+            observe_host_runtime()
         # SwiftPM names the root package after its directory, and records
         # binary targets under that name, so the copy keeps the name.
         package = work / "packages" / root.name
@@ -1206,8 +1275,8 @@ def lock_command(root: Path, force: bool):
         LOCK_VERSION
         if sdk_mode()
         else (
-            legacy_state.FORMAT
-            if lock and lock["version"] == legacy_state.FORMAT
+            lock["version"]
+            if lock and lock["version"] in (legacy_state.FORMAT, pre_workspace.FORMAT)
             else LEGACY_LOCK_VERSION
         )
     )
@@ -1350,6 +1419,14 @@ def recorded_links(root: Path) -> list:
 def unlink(root: Path):
     """Removes the links and the workspace state the interactive mode made,
     so SwiftPM resolves and fetches the usual way."""
+    if os.path.lexists(
+        root / "Packages" / pre_workspace_install.STATE
+    ) or os.path.lexists(root / pre_workspace_install.LEGACY_STATE):
+        try:
+            pre_workspace_install.uninstall(root, tool("nix-hash"), tool("git"))
+        except (pre_workspace.StateError, ValueError) as error:
+            raise PurifierError(str(error)) from error
+        return
     for relative in recorded_links(root):
         link = root / relative
         if link.is_symlink():
@@ -1388,6 +1465,28 @@ def prefetch(root: Path):
             f"{root} has no {LOCK_NAME}; run `swiftpm-purifier lock` first"
         )
     observation = require_runtime(root, lock)
+    if lock["version"] == pre_workspace.FORMAT:
+        try:
+            tree = Path(
+                nix_build(
+                    f"""(pkgs.swiftpm-purifier.projectData {{
+              src = /. + builtins.getEnv "SWIFTPM_PURIFIER_ROOT";
+              platform = builtins.currentSystem;
+              {nix_lock_arguments(root)}
+            }}).tree""",
+                    nix_lock_environment(root),
+                )
+            )
+            validate_pre_workspace(root, lock_file.read_bytes())
+            records = json.loads((tree / "pre-workspace-sources.json").read_text())
+            pre_workspace_install.install(root, records, tool("nix-hash"), tool("git"))
+        except (
+            pre_workspace.StateError,
+            pre_workspace.layout.LayoutError,
+            ValueError,
+        ) as error:
+            raise PurifierError(str(error)) from error
+        return
     if not is_current(root, lock):
         raise PurifierError(
             f"{lock_file} is out of date with Package.swift or Package.resolved; "
@@ -1516,7 +1615,11 @@ def swift_command(arguments):
         os.execvp(swift, [swift, *arguments])
     if sdk_mode() or lock["version"] == LOCK_VERSION:
         require_runtime(root, lock)
-    if arguments and arguments[0] in BUILDING_SUBCOMMANDS:
+    if (
+        lock["version"] != pre_workspace.FORMAT
+        and arguments
+        and arguments[0] in BUILDING_SUBCOMMANDS
+    ):
         native = (
             tool("swift-" + arguments[0])
             if sdk_mode()
@@ -1536,7 +1639,8 @@ def swift_command(arguments):
         os.execvp(swift, [swift, *arguments])
     if not is_current(root, lock):
         # SwiftPM would resolve and download what the lock does not hold.
-        unlink(root)
+        if lock["version"] != pre_workspace.FORMAT:
+            unlink(root)
         raise PurifierError(
             f"{lock_path(root)} is out of date with Package.swift or Package.resolved; "
             "run `swiftpm-purifier lock`, which resolves and records the new dependencies"
@@ -1592,12 +1696,12 @@ def main(argv=None):
     )
     parser.add_argument(
         "--package-path",
-        type=Path,
+        type=str,
         help="the package root (default: found from the current directory)",
     )
     parser.add_argument(
         "--lockfile",
-        type=Path,
+        type=str,
         help=f"the purifier lockfile (default: {LOCK_NAME} in the package root)",
     )
     parser.add_argument(
@@ -1639,10 +1743,23 @@ def main(argv=None):
     swift = commands.add_parser("swift", help="run swift on the locked dependencies")
     swift.add_argument("arguments", nargs=argparse.REMAINDER)
     options = parser.parse_args(argv)
-    global LOCK_OVERRIDE, TOOL_LOCK_OVERRIDE
-    if options.lockfile:
-        LOCK_OVERRIDE = str(options.lockfile.resolve())
-    if options.tool_lockfile:
+    global LOCK_OVERRIDE, RAW_LOCK_OVERRIDE, RAW_SOURCE_REFERENCE, TOOL_LOCK_OVERRIDE
+    if LOCK_OVERRIDE is not None:
+        LOCK_OVERRIDE = str(Path(LOCK_OVERRIDE).resolve())
+    if options.package_path is not None:
+        RAW_SOURCE_REFERENCE = (
+            options.package_path
+            if os.path.isabs(options.package_path)
+            else os.path.join(os.getcwd(), options.package_path)
+        )
+    if options.lockfile is not None:
+        RAW_LOCK_OVERRIDE = (
+            options.lockfile
+            if os.path.isabs(options.lockfile)
+            else os.path.join(os.getcwd(), options.lockfile)
+        )
+        LOCK_OVERRIDE = str(Path(options.lockfile).resolve())
+    if options.tool_lockfile is not None:
         TOOL_LOCK_OVERRIDE = str(options.tool_lockfile.resolve())
 
     try:
@@ -1650,7 +1767,11 @@ def main(argv=None):
             if options.package_path is not None:
                 os.chdir(options.package_path)
             swift_command(options.arguments)
-        root = (options.package_path or find_root(Path.cwd())).resolve()
+        root = (
+            Path(options.package_path)
+            if options.package_path is not None
+            else find_root(Path.cwd())
+        ).resolve()
         if options.command == "lock":
             lock_command(root, force=False)
         elif options.command == "relock":

@@ -87,16 +87,40 @@ let
 
   # SwiftPM writes no Package.resolved for a package without remote
   # dependencies, and such a package has no pins.
+  preWorkspaceFormat = (lock.version or null) == 7;
+  preWorkspace = import ./pre-workspace-state.nix {
+    inherit
+      lock
+      src
+      lockFile
+      packageResolved
+      ;
+    raw = builtins.readFile lockFile;
+  };
   legacyFormat = (lock.version or null) == 6;
-  toolLockName = if legacyFormat then "Package.pins" else "Package.resolved";
-  resolvedFile = if packageResolved != null then packageResolved else src + "/${toolLockName}";
+  toolLockName =
+    if preWorkspaceFormat then
+      null
+    else if legacyFormat then
+      "Package.pins"
+    else
+      "Package.resolved";
+  resolvedFile =
+    if preWorkspaceFormat then
+      null
+    else if packageResolved != null then
+      packageResolved
+    else
+      src + "/${toolLockName}";
   legacy = import ./legacy-state.nix {
     inherit lock;
     nativeFile = resolvedFile;
   };
   logicalLegacyType = (builtins.readDir src)."Package.pins" or "missing";
   resolved =
-    if builtins.pathExists resolvedFile then
+    if preWorkspaceFormat then
+      null
+    else if builtins.pathExists resolvedFile then
       builtins.fromJSON (builtins.readFile resolvedFile)
     else
       {
@@ -161,7 +185,9 @@ let
         };
       };
   resolvedPins =
-    if legacyFormat then
+    if preWorkspaceFormat then
+      preWorkspace.resolvedPins
+    else if legacyFormat then
       legacy.resolvedPins
     else if (resolved.version or null) == 1 then
       if
@@ -272,13 +298,16 @@ let
           4
           supportedVersion
           6
+          7
         ]
       )
     then
       "swiftpm-purifier: ${toString lockFile} has lock format version ${
         toString (lock.version or "none")
-      }; this library reads versions 4, ${toString supportedVersion} and 6. Run `swiftpm-purifier relock` with the swiftpm-purifier revision of this library."
-    else if missingFields != [ ] then
+      }; this library reads versions 4, ${toString supportedVersion}, 6 and 7. Run `swiftpm-purifier relock` with the swiftpm-purifier revision of this library."
+    else if preWorkspaceFormat && !preWorkspace.valid then
+      "swiftpm-purifier: invalid pre-workspace format-7 data, source layout, native absence, or lock destination. ${relock}"
+    else if !preWorkspaceFormat && missingFields != [ ] then
       "swiftpm-purifier: ${toString lockFile} lacks ${builtins.concatStringsSep ", " missingFields}. ${relock}"
     else if lock.contentHash != contentHash then
       "swiftpm-purifier: ${toString lockFile} does not match its contentHash, so it was changed after the lock run wrote it. ${relock}"
@@ -304,7 +333,8 @@ let
     else if lock.version == supportedVersion && sdkContract.problem != null then
       "swiftpm-purifier: ${sdkContract.problem}. ${relock}"
     else if
-      lock.workspaceStateVersion == 2
+      !preWorkspaceFormat
+      && lock.workspaceStateVersion == 2
       && (
         (builtins.pathExists resolvedFile && (resolved.version or null) != 1)
         || !(builtins.all legacyLocalValid lock.localDependencies)
@@ -324,7 +354,8 @@ let
     else if lock.manifestHash != manifestHash then
       "swiftpm-purifier: ${toString lockFile} is out of date with Package.swift in ${toString src}. Run `swiftpm-purifier lock`."
     else if
-      !legacyFormat
+      !preWorkspaceFormat
+      && !legacyFormat
       && (
         !builtins.isInt (resolved.version or null)
         || !builtins.elem (resolved.version or null) [
@@ -494,8 +525,11 @@ in
 
     entries =
       if usable then
-        map entryOf resolvedPins
-        ++ map binaryEntryOf (builtins.filter (target: target.source.type == "remote") lock.binaryTargets)
+        if preWorkspaceFormat then
+          preWorkspace.entries
+        else
+          map entryOf resolvedPins
+          ++ map binaryEntryOf (builtins.filter (target: target.source.type == "remote") lock.binaryTargets)
       else
         [ ];
 
@@ -515,6 +549,7 @@ in
 
   inherit (lock) package rootDirectory products;
   inherit toolLockName;
+  preWorkspace = if preWorkspaceFormat then preWorkspace else null;
   toolLockFile = resolvedFile;
   lockVersion = lock.version;
   nativeSDK = sdk;
@@ -524,7 +559,9 @@ in
   entryName = entry: storeName entry.path;
 
   workspaceState =
-    if legacyFormat then
+    if preWorkspaceFormat then
+      null
+    else if legacyFormat then
       legacy.workspaceState
     else
       {
@@ -543,5 +580,10 @@ in
         version = lock.workspaceStateVersion;
       };
   workspaceStateFile =
-    if lock.workspaceStateVersion == 2 then "dependencies-state.json" else "workspace-state.json";
+    if preWorkspaceFormat then
+      null
+    else if lock.workspaceStateVersion == 2 then
+      "dependencies-state.json"
+    else
+      "workspace-state.json";
 }
