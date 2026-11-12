@@ -633,10 +633,20 @@ def subpath_of(pin: dict) -> str:
     return base.removesuffix(".git")
 
 
-def record_of(pin: dict, name: str) -> dict:
+def record_of(pin: dict, name: str, state_version=None) -> dict:
     """The workspace-state record of a pinned dependency marked as edited,
     as lock.nix derives it from the pin and the package name the lockfile
     records."""
+    if "legacyPackage" in pin and state_version == 7:
+        # Package.resolved's schema is independent of the workspace schema.
+        # Current SwiftPM can keep v1 pins while writing workspace format 7.
+        pin = dict(
+            pin,
+            kind="remoteSourceControl",
+            state={
+                key: value for key, value in pin["state"].items() if value is not None
+            },
+        )
     registry = pin["kind"] == "registry"
     ref = {
         "identity": pin["identity"],
@@ -666,7 +676,9 @@ def record_of(pin: dict, name: str) -> dict:
     }
 
 
-def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
+def lock_pin(
+    pin: dict, dependency: dict, package: Path, config: Path, state_version=None
+) -> dict:
     """The lockfile's record of one pin of Package.resolved: what a build
     needs beyond the pin. `dependency` is SwiftPM's workspace-state record
     of the same dependency, which the record lock.nix derives must equal."""
@@ -686,7 +698,7 @@ def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
         raise PurifierError(
             f"{identity}: version-1 package name disagrees with native workspace state"
         )
-    derived = record_of(pin, ref["name"])
+    derived = record_of(pin, ref["name"], state_version)
     recorded = {
         "basedOn": dict(dependency, basedOn=None),
         "packageRef": ref,
@@ -701,7 +713,7 @@ def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
             f"  recorded: {json.dumps(recorded['basedOn'], sort_keys=True)}"
         )
     locked = {"name": ref["name"]}
-    if kind == "remote":
+    if "legacyPackage" in pin:
         # Version 1 stores the package name, not its native identity. Preserve
         # the source-to-identity join instead of inventing URL case folding.
         locked["sourceLocation"] = pin["location"]
@@ -719,7 +731,7 @@ def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
         locked["hash"] = prefetch_file(locked["url"])
         return locked
     rev = pin["state"]["revision"]
-    url = mirrors(package, config, legacy=kind == "remote").get(
+    url = mirrors(package, config, legacy=kind == "remote" and state_version != 7).get(
         pin["location"], pin["location"]
     )
     # The fetch URL is recorded only when a mirror replaces the location
@@ -834,7 +846,7 @@ def relock(root: Path, update=None):
         legacy_identities = {}
         for identity, dependency in recorded.items():
             ref = dependency["packageRef"]
-            if ref["kind"] == "remote":
+            if ref["kind"] in ("remote", "remoteSourceControl"):
                 location = ref["location"]
                 if location in legacy_identities:
                     raise PurifierError("native workspace repeats a source location")
@@ -846,7 +858,9 @@ def relock(root: Path, update=None):
                 raise PurifierError(
                     f"Package.resolved pins {pin['identity']}, which SwiftPM's workspace state lacks"
                 )
-            pins[pin["identity"]] = lock_pin(pin, dependency, package, config)
+            pins[pin["identity"]] = lock_pin(
+                pin, dependency, package, config, state["version"]
+            )
         # What remains are the path dependencies, which Package.resolved
         # does not list.
         local = []

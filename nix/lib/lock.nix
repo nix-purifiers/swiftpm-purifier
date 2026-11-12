@@ -146,7 +146,7 @@ let
     else
       {
         inherit identity location;
-        kind = "remote";
+        kind = if lock.workspaceStateVersion == 7 then "remoteSourceControl" else "remote";
         state = {
           branch = state.branch or null;
           revision = state.revision;
@@ -254,7 +254,13 @@ let
     else
       {
         name = if pin.kind == "remote" then "checkout" else "sourceControlCheckout";
-        checkoutState = pin.state;
+        checkoutState =
+          if lock.workspaceStateVersion == 7 then
+            builtins.removeAttrs pin.state (
+              builtins.filter (key: pin.state.${key} == null) (builtins.attrNames pin.state)
+            )
+          else
+            pin.state;
       };
 
   recordOf =
@@ -382,7 +388,12 @@ in
       artifacts = lock.binaryTargets;
       dependencies = lock.localDependencies ++ map recordOf resolvedPins;
     }
-    // (if (resolved.version or null) == 1 then { } else { prebuilts = [ ]; });
+    // (
+      if lock.workspaceStateVersion == 7 || (resolved.version or null) != 1 then
+        { prebuilts = [ ]; }
+      else
+        { }
+    );
     version = lock.workspaceStateVersion;
   };
 }

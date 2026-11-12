@@ -75,13 +75,27 @@ fixture() {
 
 nix build --out-link "$work/toolchain" "$repo#toolchain"
 bin=$work/toolchain/bin
+# Portable fixture capture uses local mode and the installed core runtime.
+nix build --out-link "$work/local-cli" "$repo#cli"
+purifier=$work/local-cli/bin/swiftpm-purifier
+# Establish the installed Nix runtime fixture's own compiler/linker environment.
+# The local CLI inherits it; it does not choose or activate this SDK itself.
+native_environment=$(nix eval --impure --raw --expr "
+  let
+    f = builtins.getFlake \"git+file://$repo\";
+    p = import f.inputs.nixpkgs { system = builtins.currentSystem; overlays = [ f.overlays.default ]; };
+  in toString (p.swiftpm-purifier.cli.override { runtimeMode = \"sdk\"; }).nativeEnvironment")
+source "$native_environment"
+native_swift_bin=$(dirname "$(readlink -f "$bin/swiftc")")
+native_pm_bin=$(dirname "$(readlink -f "$bin/swift-package")")
+export PATH="$native_swift_bin:$native_pm_bin:$PATH"
 
 relock() {
   echo "== relocking the fixtures reproduces their lockfiles"
   mkdir -p "$work/relock"
   for name in hello paths binary macro; do
     fixture "$name" "relock/$name"
-    (cd "$work/relock/$name" && "$bin/swiftpm-purifier" relock)
+    (cd "$work/relock/$name" && "$purifier" relock)
     diff -u "$tests/fixtures/$name/swiftpm-purifier.lock.json" "$work/relock/$name/swiftpm-purifier.lock.json" \
       || fail "relocking $name changed its lockfile"
   done
@@ -89,7 +103,7 @@ relock() {
   echo "== relocking vapor/toolbox against its lockfile kept outside it"
   git clone --quiet https://github.com/vapor/toolbox.git "$work/relock/toolbox"
   git -C "$work/relock/toolbox" checkout --quiet 9046ddadc17ac8400e1923a2db3bdca054172874
-  (cd "$work/relock/toolbox" && "$bin/swiftpm-purifier" --lockfile "$work/relock/toolbox.lock.json" relock)
+  (cd "$work/relock/toolbox" && "$purifier" --lockfile "$work/relock/toolbox.lock.json" relock)
   diff -u "$tests/projects/toolbox/swiftpm-purifier.lock.json" "$work/relock/toolbox.lock.json" \
     || fail "relocking vapor/toolbox changed its lockfile"
   git -C "$work/relock/toolbox" diff --quiet Package.resolved || fail "relocking vapor/toolbox changed Package.resolved"
@@ -121,9 +135,9 @@ interactive() {
   cp "$work/Package.swift" Package.swift
 
   echo "== uninstall removes the links"
-  "$bin/swiftpm-purifier" prefetch
+  "$purifier" prefetch
   [ -L Packages/swift-collections ] || fail "prefetch made no links"
-  "$bin/swiftpm-purifier" uninstall
+  "$purifier" uninstall
   [ ! -e Packages/swift-collections ] || fail "uninstall left the links"
   [ ! -e .build/workspace-state.json ] || fail "uninstall left the workspace state"
 
@@ -132,7 +146,7 @@ interactive() {
   fixture hello external/hello
   rm "$work/external/hello/swiftpm-purifier.lock.json"
   cd "$work/external/hello"
-  "$bin/swiftpm-purifier" --lockfile "$work/external/hello.lock.json" lock
+  "$purifier" --lockfile "$work/external/hello.lock.json" lock
   [ ! -e swiftpm-purifier.lock.json ] || fail "lock --lockfile wrote the lockfile into the package"
   diff -u "$tests/fixtures/hello/swiftpm-purifier.lock.json" "$work/external/hello.lock.json" \
     || fail "the lockfile kept outside differs from the fixture's lockfile"
@@ -141,7 +155,7 @@ interactive() {
 
   echo "== a lockfile of SwiftPM kept outside the package"
   cp Package.resolved "$work/Package.resolved.in-tree"
-  "$bin/swiftpm-purifier" --lockfile "$work/external/hello.lock.json" --tool-lockfile "$work/external/hello.resolved" relock
+  "$purifier" --lockfile "$work/external/hello.lock.json" --tool-lockfile "$work/external/hello.resolved" relock
   cmp Package.resolved "$work/Package.resolved.in-tree" || fail "relock with --tool-lockfile changed the copy in the package"
   cmp "$work/external/hello.resolved" Package.resolved || fail "relock with --tool-lockfile did not start from the copy in the package"
   cd "$work"
@@ -180,7 +194,7 @@ offline() {
   read -r -a without_network <<< "${SWIFTPM_PURIFIER_TEST_OFFLINE:-unshare -rn}"
   fixture hello offline
   cd "$work/offline"
-  "$bin/swiftpm-purifier" prefetch
+  "$purifier" prefetch
   "${without_network[@]}" "$bin/swift" build > /dev/null || fail "swift build failed with no network"
   # As in interactive, no XCTest tests on macOS.
   if [ "$(uname)" != Darwin ]; then
@@ -207,13 +221,13 @@ for pin in resolved["pins"]:
         pin["state"] = {"revision": sys.argv[1], "version": "1.1.0"}
 open("Package.resolved", "w").write(json.dumps(resolved, indent=2) + "\n")
 EOF
-  "$bin/swiftpm-purifier" lock
+  "$purifier" lock
   grep -q "$old" swiftpm-purifier.lock.json || fail "the lock did not keep the old pin"
-  "$bin/swiftpm-purifier" update swift-collections
+  "$purifier" update swift-collections
   if grep -q "$old" Package.resolved swiftpm-purifier.lock.json; then
     fail "update left the old revision in a lockfile"
   fi
-  "$bin/swiftpm-purifier" lock 2>&1 | grep -q 'up to date' || fail "lock found the lockfile stale after update"
+  "$purifier" lock 2>&1 | grep -q 'up to date' || fail "lock found the lockfile stale after update"
   nix build --impure --dry-run --expr "($(project "$work/update")).project" \
     || fail "the Nix evaluation found the lockfile stale after update"
   cd "$work"
@@ -246,7 +260,7 @@ EOF
   cat > "$work/greeter/Sources/Greeter/Greeter.swift" << 'EOF'
 public func greeting(for name: String) -> String { "Greetings, \(name)!" }
 EOF
-  (cd "$work/greeter" && "$bin/swiftpm-purifier" lock && "$bin/swiftpm-purifier" publish nix.greeter 1.0.0 --registry "$url")
+  (cd "$work/greeter" && "$purifier" lock && "$purifier" publish nix.greeter 1.0.0 --registry "$url")
   [ -e "$work/archives/nix.greeter-1.0.0.zip" ] || fail "publish stored no archive"
 
   # The package that depends on it by registry identity.
@@ -278,7 +292,7 @@ EOF
 }
 EOF
   cd "$work/consumer"
-  "$bin/swiftpm-purifier" lock
+  "$purifier" lock
   python3 - "$url" << 'EOF'
 import json, sys
 lock = json.load(open("swiftpm-purifier.lock.json"))
@@ -296,7 +310,7 @@ EOF
   nix build --impure --out-link "$work/consumer-build" --expr "($(project "$work/consumer")).packages.consumer"
   [ "$("$work/consumer-build/bin/consumer")" = "Greetings, Nix!" ] || fail "the Nix build of the consumer printed something else"
 
-  "$bin/swiftpm-purifier" prefetch
+  "$purifier" prefetch
   kill "$registry_pid"
   registry_pid=
   [ "$("$bin/swift" run consumer)" = "Greetings, Nix!" ] || fail "swift run with the registry gone printed something else"

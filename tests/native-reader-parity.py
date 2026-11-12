@@ -122,7 +122,12 @@ def main():
       reader = /. + builtins.getEnv "SWIFTPM_READER_LIBRARY";
       result = import reader { src = root; lockFile = root + "/swiftpm-purifier.lock.json"; };
     in { problems = result.lock.problems; workspace = result.workspaceState; entries = result.lock.entries; }"""
-    for name, value, pins, expected in cases:
+    cases = [
+        (f"{name}-workspace{version}", value, pins, expected, version)
+        for name, value, pins, expected in cases
+        for version in (4, 7)
+    ]
+    for name, value, pins, expected, state_version in cases:
         work = args.output / name
         work.mkdir()
         (work / "Package.swift").write_text("// swift-tools-version:5.5\n")
@@ -133,7 +138,7 @@ def main():
             "rootDirectory": work.name,
             "manifestHash": sp.manifest_hash(work),
             "products": [],
-            "workspaceStateVersion": 4,
+            "workspaceStateVersion": state_version,
             "pins": pins,
             "binaryTargets": [],
             "localDependencies": [],
@@ -187,10 +192,13 @@ def main():
             identities = {pin["sourceLocation"]: key for key, pin in pins.items()}
             normalized = sp.resolved_pins(work / "Package.resolved", identities)
             records = [
-                sp.record_of(pin, pins[pin["identity"]]["name"]) for pin in normalized
+                sp.record_of(pin, pins[pin["identity"]]["name"], state_version)
+                for pin in normalized
             ]
             assert nix_result["workspace"]["object"]["dependencies"] == records
-            assert "prebuilts" not in nix_result["workspace"]["object"]
+            assert ("prebuilts" in nix_result["workspace"]["object"]) == (
+                state_version == 7
+            )
     receipt["complete"] = True
     (args.output / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
     print(json.dumps({"complete": True, "cases": len(cases)}))

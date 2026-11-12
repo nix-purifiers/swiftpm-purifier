@@ -100,6 +100,27 @@ class LegacyResolved(unittest.TestCase):
             actual["location"], actual["state"]["revision"]
         )
 
+    def test_v1_pins_use_modern_workspace_protocol_when_native_state_is_7(self):
+        fixture = self.fixtures.parent / "native633-v1"
+        dependency = json.loads((fixture / "workspace-state.json").read_text())[
+            "object"
+        ]["dependencies"][0]
+        ref = dependency["packageRef"]
+        actual = sp.resolved_pins(
+            fixture / "Package.resolved", {ref["location"]: ref["identity"]}
+        )[0]
+        record = sp.record_of(actual, "LegacyLeaf", 7)
+        self.assertEqual(record["basedOn"], dependency)
+        self.assertEqual(record["packageRef"]["kind"], "remoteSourceControl")
+        self.assertEqual(record["basedOn"]["state"]["name"], "sourceControlCheckout")
+        self.assertNotIn("branch", record["basedOn"]["state"]["checkoutState"])
+        with (
+            mock.patch.object(sp, "mirrors", return_value={}),
+            mock.patch.object(sp, "prefetch_git", return_value="sha256-test"),
+        ):
+            locked = sp.lock_pin(actual, dependency, Path("."), Path("config"), 7)
+        self.assertEqual(locked["sourceLocation"], actual["location"])
+
     def test_missing_native_identity_is_rejected(self):
         with self.assertRaises(sp.PurifierError):
             self.read(identities={})
