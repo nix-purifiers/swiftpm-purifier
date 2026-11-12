@@ -17,8 +17,9 @@
 # - `packages.<product>`, one per product the lock recorded from
 #   `swift package dump-package`: an executable's binary under bin/, a
 #   dynamic or static library's file under lib/ with its Swift modules,
-#   and, for an automatic library, a plugin or a macro, which SwiftPM
-#   publishes as source, the package's source archive;
+#   and, for a format-8 automatic library, its actual modules and objects.
+#   Earlier protocols expose automatic libraries, plugins and macros as
+#   the package's source archive;
 # - `tests`, the build with `swift test` run in the sandbox;
 # - `release`, the package's source archive, which a package registry
 #   serves and `swiftpm-purifier publish` uploads;
@@ -75,17 +76,19 @@ let
   inherit (swiftPackages) stdenv swift swiftpm;
 
   selectedSDK = callPackage ../swift-sdk/selected-sdk.nix { inherit swiftPackages; };
-  data = (callPackage ./project-data.nix { inherit purifier; }) {
-    inherit
-      src
-      fetchers
-      lockFile
-      packageResolved
-      artifactBuildInputs
-      ;
-    platform = stdenv.hostPlatform.system;
-    selectedSDK = selectedSDK.descriptor;
-  };
+  data = (callPackage ./project-data.nix { inherit purifier; }) (
+    {
+      inherit
+        src
+        fetchers
+        lockFile
+        artifactBuildInputs
+        ;
+      platform = stdenv.hostPlatform.system;
+      selectedSDK = selectedSDK.descriptor;
+    }
+    // lib.optionalAttrs (args ? packageResolved) { inherit packageResolved; }
+  );
   inherit (data) read current tree;
   sdkClosure = closureInfo { rootPaths = selectedSDK.roots; };
   expectedSDK = writeText "expected-native-sdk.json" (builtins.toJSON read.nativeSDK);
@@ -93,8 +96,20 @@ let
   name = read.package;
 
   # Links the tree into the package root and fills in the workspace state.
+  format8Lock = writeText "swiftpm-format8-lock.json" (builtins.readFile lockFile);
+  format8Pins =
+    if read.lockVersion == 8 && read.toolLockBytes != null then
+      writeText "swiftpm-format8-native-pins" read.toolLockBytes
+    else
+      "";
+  format8Tool = ./dependencies-v1-build.py;
   linkTree =
-    if read.lockVersion == 7 then
+    if read.lockVersion == 8 then
+      ''
+        PYTHONPATH=${../../pkgs/cli} ${lib.getExe python3} ${format8Tool} prepare \
+          --root "$PWD" --lock ${format8Lock} --tree ${tree} --native-file ${lib.escapeShellArg (toString format8Pins)}
+      ''
+    else if read.lockVersion == 7 then
       ''
         # Native pre-workspace SwiftPM needs real Git metadata in repositories
         # owned by this builder. Store symlinks fail its Git repository checks.
@@ -143,7 +158,7 @@ let
     assert current;
     stdenv.mkDerivation (
       {
-        pname = name;
+        pname = if read.lockVersion == 8 then read.storeName name else name;
         version = "locked";
         inherit src;
 
@@ -221,31 +236,41 @@ let
 
         # nixpkgs' install phase installs executables and dynamic libraries;
         # static libraries are installed here.
-        postInstall = ''
-          products=${
-            if
-              builtins.elem read.lockVersion [
-                6
-                7
-              ]
-            then
-              lib.escapeShellArg ".build/${buildConfig}"
-            else
-              "$(swift build -c ${buildConfig} --show-bin-path)"
-          }
-          for library in ${lib.escapeShellArgs staticLibraries}; do
-            install -D -t "$out/lib" "$products/lib$library.a"
-            for module in "$products"/Modules/*.swiftmodule "$products"/*.swiftmodule; do
-              [ -e "$module" ] && install -D -t "$out/lib/swift/${stdenv.hostPlatform.parsed.kernel.name}" "$module"
+        postInstall =
+          lib.optionalString (read.lockVersion != 8) ''
+            products=${
+              if
+                builtins.elem read.lockVersion [
+                  6
+                  7
+                ]
+              then
+                lib.escapeShellArg ".build/${buildConfig}"
+              else
+                "$(swift build -c ${buildConfig} --show-bin-path)"
+            }
+            for library in ${lib.escapeShellArgs staticLibraries}; do
+              install -D -t "$out/lib" "$products/lib$library.a"
+              for module in "$products"/Modules/*.swiftmodule "$products"/*.swiftmodule; do
+                [ -e "$module" ] && install -D -t "$out/lib/swift/${stdenv.hostPlatform.parsed.kernel.name}" "$module"
+              done
             done
-          done
-        ''
-        + (extraArgs.postInstall or "");
+          ''
+          + (extraArgs.postInstall or "");
 
         passthru = {
           inherit (read) lock;
           inherit tree;
         };
+      }
+      // lib.optionalAttrs (read.lockVersion == 8) {
+        installPhase = ''
+          runHook preInstall
+          PYTHONPATH=${../../pkgs/cli} ${lib.getExe python3} ${format8Tool} install \
+            --root "$PWD" --lock ${format8Lock} --out "$out" --configuration ${lib.escapeShellArg buildConfig} \
+            --package-command ${swiftpm}/bin/swift-package --compiler ${swift}/bin/swiftc
+          runHook postInstall
+        '';
       }
       //
         lib.optionalAttrs
@@ -306,7 +331,11 @@ let
 
   basePackageOf =
     product:
-    if product.type == "executable" then
+    if read.lockVersion == 8 then
+      runCommand (read.storeName product.name) { nativeBuildInputs = [ python3 ]; } ''
+        python3 ${format8Tool} package --project ${project} --product ${lib.escapeShellArg product.name} --out "$out"
+      ''
+    else if product.type == "executable" then
       runCommand product.name { meta.mainProgram = product.name; } ''
         mkdir -p $out/bin
         ln -s ${project}/bin/${product.name} $out/bin/${product.name}

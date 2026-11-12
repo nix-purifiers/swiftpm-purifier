@@ -22,6 +22,52 @@ permissions:
   contents: read
 
 jobs:
+  dependencies-v1-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Prepare the explicit original Swift 4 fixture
+        env:
+          FIXTURE_SOURCE: ${{ github.workspace }}
+        run: |
+          nix build --impure --no-link --json --expr '
+            let
+              f = builtins.getFlake ("path:" + builtins.getEnv "FIXTURE_SOURCE");
+              p = import f.inputs.nixpkgs { system = builtins.currentSystem; };
+            in import (f.outPath + "/tests/sdk/swift403/default.nix") { pkgs = p; }
+          ' > "$RUNNER_TEMP/dependencies-v1-runtime-build.json"
+          runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/dependencies-v1-runtime-build.json")
+          mkdir -p "$RUNNER_TEMP/dependencies-v1-sdk-metadata"
+          cp "$runtime/original-tool-bytes.json" "$runtime/original-runtime-bytes.json" "$runtime/original-header-relocations.json" "$RUNNER_TEMP/dependencies-v1-sdk-metadata/"
+          nix build --impure --no-link --print-out-paths --expr '
+            let
+              f = builtins.getFlake ("path:" + builtins.getEnv "FIXTURE_SOURCE");
+              p = import f.inputs.nixpkgs { system = builtins.currentSystem; };
+            in p.nix-prefetch-git
+          ' > "$RUNNER_TEMP/dependencies-v1-prefetch-prefix"
+          nix build --no-link --print-out-paths "path:$FIXTURE_SOURCE#default" > "$RUNNER_TEMP/dependencies-v1-cli-prefix"
+      - name: Validate readers and original native transitive builds
+        run: |
+          python3 tests/dependencies-v1-codec-parity.py --output "$RUNNER_TEMP/dependencies-v1-codec"
+          python3 tests/dependencies-v1-layout-parity.py --output "$RUNNER_TEMP/dependencies-v1-layout"
+          python3 tests/dependencies-v1-pure.py > "$RUNNER_TEMP/dependencies-v1-readers.json"
+          runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/dependencies-v1-runtime-build.json")
+          prefetch=$(cat "$RUNNER_TEMP/dependencies-v1-prefetch-prefix")
+          cli=$(cat "$RUNNER_TEMP/dependencies-v1-cli-prefix")
+          python3 tests/dependencies-v1-pure-native.py --transitive --runtime-prefix "$runtime" --nix-prefetch-git "$prefetch/bin/nix-prefetch-git" --cli "$cli/bin/swiftpm-purifier" --work "$RUNNER_TEMP/dependencies-v1-native"
+      - name: Package native state and product evidence
+        if: always()
+        run: python3 tests/dependencies-v1-pack-evidence.py --root "$RUNNER_TEMP"
+      - name: Retain native state and product evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dependencies-v1-swift403
+          path: |
+            ${{ runner.temp }}/dependencies-v1-evidence.tar.gz
+            ${{ runner.temp }}/dependencies-v1-evidence-manifest.json
   legacy-state-lifecycle:
     runs-on: ubuntu-latest
     timeout-minutes: 60
