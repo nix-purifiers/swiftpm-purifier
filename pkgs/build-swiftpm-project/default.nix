@@ -93,18 +93,40 @@ let
   name = read.package;
 
   # Links the tree into the package root and fills in the workspace state.
-  linkTree = ''
-    ${lib.optionalString (read.lockVersion == 6) "rm -f ${lib.escapeShellArg read.toolLockName}"}
-    ${lib.optionalString (builtins.pathExists read.toolLockFile) ''
-      cp --no-preserve=mode ${read.toolLockFile} ${lib.escapeShellArg read.toolLockName}
-    ''}
-    for entry in $(cd ${tree} && find . -mindepth 1 -type l -printf '%P\n'); do
-      mkdir -p "$(dirname "$entry")"
-      ln -sfn "$(readlink ${tree}/$entry)" "$entry"
-    done
-    mkdir -p .build
-    substitute ${tree}/workspace-state.json.in .build/${read.workspaceStateFile} --subst-var-by root "$PWD"
-  '';
+  linkTree =
+    if read.lockVersion == 7 then
+      ''
+        # Native pre-workspace SwiftPM needs real Git metadata in repositories
+        # owned by this builder. Store symlinks fail its Git repository checks.
+        ${lib.getExe python3} - ${tree}/pre-workspace-sources.json "$PWD" <<'PY'
+        import json, shutil, sys
+        from pathlib import Path
+        root = Path(sys.argv[2])
+        packages = root / "Packages"
+        if packages.exists() or packages.is_symlink():
+            raise SystemExit("pre-workspace build source must not contain a native Packages cache")
+        for record in json.loads(Path(sys.argv[1]).read_text()):
+            destination = root / record["path"]
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(record["source"], destination, symlinks=True)
+            for path in [destination, *destination.rglob("*")]:
+                if not path.is_symlink():
+                    path.chmod(path.stat().st_mode | (0o700 if path.is_dir() else 0o200))
+        PY
+      ''
+    else
+      ''
+        ${lib.optionalString (read.lockVersion == 6) "rm -f ${lib.escapeShellArg read.toolLockName}"}
+        ${lib.optionalString (builtins.pathExists read.toolLockFile) ''
+          cp --no-preserve=mode ${read.toolLockFile} ${lib.escapeShellArg read.toolLockName}
+        ''}
+        for entry in $(cd ${tree} && find . -mindepth 1 -type l -printf '%P\n'); do
+          mkdir -p "$(dirname "$entry")"
+          ln -sfn "$(readlink ${tree}/$entry)" "$entry"
+        done
+        mkdir -p .build
+        substitute ${tree}/workspace-state.json.in .build/${read.workspaceStateFile} --subst-var-by root "$PWD"
+      '';
 
   extraArgs = builtins.removeAttrs args [
     "src"
@@ -166,7 +188,7 @@ let
           mkdir -p "$HOME"
           export CLANG_MODULE_CACHE_PATH=$TMPDIR/clang-module-cache
           export SWIFT_EXEC=${swift}/bin/swiftc
-          ${lib.optionalString (read.nativeSDK == null) ''
+          ${lib.optionalString (read.nativeSDK == null && read.lockVersion != 7) ''
             # Portable locks carry no SDK capability attestation. Ask the
             # actual selected build command before adding a native flag.
             nativePrebuiltFlag=$(${lib.getExe python3} -c 'import sys; sys.path.insert(0,sys.argv[1]); import swiftpm_purifier as sp; print("--disable-experimental-prebuilts" if "--disable-experimental-prebuilts" in sp.native_options((sys.argv[2],"build"),None) else "")' ${../../pkgs/cli} ${swift}/bin/swift)
@@ -201,7 +223,12 @@ let
         # static libraries are installed here.
         postInstall = ''
           products=${
-            if read.lockVersion == 6 then
+            if
+              builtins.elem read.lockVersion [
+                6
+                7
+              ]
+            then
               lib.escapeShellArg ".build/${buildConfig}"
             else
               "$(swift build -c ${buildConfig} --show-bin-path)"
@@ -220,9 +247,15 @@ let
           inherit tree;
         };
       }
-      // lib.optionalAttrs (read.lockVersion == 6) {
-        swiftpmPurifierProducts = writeText "legacy-native-products.json" (builtins.toJSON read.products);
-      }
+      //
+        lib.optionalAttrs
+          (builtins.elem read.lockVersion [
+            6
+            7
+          ])
+          {
+            swiftpmPurifierProducts = writeText "legacy-native-products.json" (builtins.toJSON read.products);
+          }
       // builtins.removeAttrs extraArgs [
         "nativeBuildInputs"
         "postUnpack"

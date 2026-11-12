@@ -11,6 +11,8 @@
   fetchurl,
   fetchgit,
   callPackage,
+  git ? null,
+  nix ? null,
   purifier,
 }:
 {
@@ -34,25 +36,39 @@ let
   current = builtins.seq (purifier.checkLock read.lock) true;
   tree =
     assert current;
-    import ./tree.nix {
-      inherit read runCommand;
-      entries = purifier.entriesFor platform read.lock;
-      fetchEntry = purifier.fetchEntry (
-        {
-          inherit
-            runCommand
-            unzip
-            zstd
-            python3
-            writeText
-            fetchurl
-            fetchgit
-            ;
-        }
-        // fetchers
-      );
-      patchArtifact = callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
-    };
+    if read.lockVersion == 7 then
+      assert git != null && nix != null;
+      import ./pre-workspace-tree.nix {
+        inherit
+          read
+          fetchgit
+          fetchers
+          runCommand
+          python3
+          git
+          nix
+          ;
+      }
+    else
+      import ./tree.nix {
+        inherit read runCommand;
+        entries = purifier.entriesFor platform read.lock;
+        fetchEntry = purifier.fetchEntry (
+          {
+            inherit
+              runCommand
+              unzip
+              zstd
+              python3
+              writeText
+              fetchurl
+              fetchgit
+              ;
+          }
+          // fetchers
+        );
+        patchArtifact = callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
+      };
   release =
     assert current;
     import ./source-archive.nix { inherit runCommand zip; } {

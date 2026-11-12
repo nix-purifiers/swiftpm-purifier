@@ -1,6 +1,9 @@
 # shellcheck shell=bash
 originalSwift302BuildPhase() {
     runHook preBuild
+    # Original SwiftPM treats CC as a path. Select this explicit SDK's
+    # existing genuine Clang helper after stdenv has initialized its tools.
+    export CC=@clang@
     local flags=(-c "${swiftpmBuildConfig-release}")
     concatTo flags swiftpmFlags swiftpmFlagsArray
     swift build "${flags[@]}"
@@ -8,7 +11,10 @@ originalSwift302BuildPhase() {
 }
 originalSwift302CheckPhase() {
     runHook preCheck
-    local flags=(-c "${swiftpmBuildConfig-release}")
+    export CC=@clang@
+    # This original swift-test always builds its debug test configuration
+    # and has no -c/--configuration option (unlike swift-build).
+    local flags=()
     concatTo flags swiftpmFlags swiftpmFlagsArray
     swift test "${flags[@]}"
     runHook postCheck

@@ -63,6 +63,9 @@ stdenvNoCC.mkDerivation {
       ./legacy_state.py
       ./pre_workspace_plan.py
       ./pre_workspace_layout.py
+      ./pre_workspace.py
+      ./pre_workspace_git.py
+      ./pre_workspace_install.py
       ./native_sdk.py
       ./host_runtime.py
       ./test_swiftpm_purifier.py
@@ -92,6 +95,9 @@ stdenvNoCC.mkDerivation {
     cp pkgs/cli/legacy_state.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/pre_workspace_plan.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/pre_workspace_layout.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/pre_workspace.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/pre_workspace_git.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/pre_workspace_install.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/native_sdk.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/host_runtime.py $out/libexec/swiftpm-purifier/
     # SWIFTPM_PURIFIER_FLAKE is this flake's source, whose package set the
@@ -116,6 +122,7 @@ stdenvNoCC.mkDerivation {
           ${lib.escapeShellArgs editorArguments} \
           --set SWIFTPM_PURIFIER_NIX_PREFETCH_GIT ${lib.getExe nix-prefetch-git} \
           --set SWIFTPM_PURIFIER_NIX ${lib.getExe nix} \
+          --set SWIFTPM_PURIFIER_NIX_HASH ${nix}/bin/nix-hash \
           --run 'source ${swiftEnvironment}'
       ''
     else
@@ -127,6 +134,7 @@ stdenvNoCC.mkDerivation {
           --set SWIFTPM_PURIFIER_CLI_ROOT "$out" \
           --set SWIFTPM_PURIFIER_NIX_PREFETCH_GIT ${lib.getExe nix-prefetch-git} \
           --set SWIFTPM_PURIFIER_NIX ${lib.getExe nix} \
+          --set SWIFTPM_PURIFIER_NIX_HASH ${nix}/bin/nix-hash \
           --suffix PATH : ${
             lib.makeBinPath [
               git

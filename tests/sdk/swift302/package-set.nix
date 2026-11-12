@@ -8,6 +8,7 @@ let
     name = "original-swift302-build-hook";
     substitutions = {
       python = pkgs.lib.getExe pkgs.python3;
+      clang = "${pkgs.clang}/bin/clang";
     };
   } ./setup-hook.sh;
   swiftpm =
