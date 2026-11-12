@@ -455,6 +455,53 @@ def main():
                 }
             )
         receipt["coldSourceFiles"] = files
+        env["NATIVE_PROJECT"] = str(project)
+        data = json.loads(
+            run(
+                "data-tree-for-controls",
+                [
+                    "nix",
+                    "build",
+                    "--impure",
+                    "--no-link",
+                    "--json",
+                    "--expr",
+                    common
+                    + """(pkgs.swiftpm-purifier.projectData {
+              src = /. + builtins.getEnv "NATIVE_PROJECT";
+              platform = builtins.currentSystem;
+            }).tree""",
+                ],
+            )
+        )
+        data_tree = Path(data[0]["outputs"]["out"])
+        sources = json.loads((data_tree / "pre-workspace-sources.json").read_text())
+        run(
+            "owned-install-controls",
+            [
+                sys.executable,
+                str(root / "tests/pre-workspace-install.py"),
+                "--tree",
+                str(data_tree),
+                "--nix-hash",
+                shutil.which("nix-hash"),
+                "--output",
+                str(work / "owned-install-controls"),
+            ],
+        )
+        run(
+            "git-confinement-controls",
+            [
+                sys.executable,
+                str(root / "tests/pre-workspace-git-confinement.py"),
+                "--source",
+                sources[0]["source"],
+                "--runtime-prefix",
+                str(runtime),
+                "--output",
+                str(work / "git-confinement-controls"),
+            ],
+        )
         receipt["requestsAfterPrefetch"] = len(receipt["requests"])
     finally:
         server.shutdown()

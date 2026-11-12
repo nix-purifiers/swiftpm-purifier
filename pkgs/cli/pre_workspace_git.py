@@ -7,8 +7,78 @@ import json
 import os
 from pathlib import Path
 import shutil
+import re
 
 import bounded_native
+
+
+OBJECT_ENV = (
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_DIR",
+    "GIT_COMMON_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+)
+
+
+def reject_git_environment(environment):
+    if any(name in environment for name in OBJECT_ENV):
+        raise ValueError(
+            "pre-workspace Git object/worktree environment overrides are unsupported"
+        )
+
+
+def confine_git(source, environment=None):
+    """Check physical metadata pointers before invoking any Git operation."""
+    reject_git_environment(os.environ if environment is None else environment)
+    source = Path(source)
+    if (
+        source.is_symlink()
+        or not source.is_dir()
+        or (source / ".git").is_symlink()
+        or not (source / ".git").is_dir()
+    ):
+        raise ValueError("self-contained real Git metadata directory required")
+    root = source.resolve()
+    for pointer in [
+        source / ".git",
+        *[path for path in source.rglob(".git") if path != source / ".git"],
+    ]:
+        if pointer.is_symlink():
+            raise ValueError("Git metadata pointer must not be a symlink")
+        if pointer.is_file():
+            if pointer.stat().st_size > 8192:
+                raise ValueError("Git metadata pointer byte bound")
+            match = re.fullmatch(r"gitdir: ([^\r\n\x00]+)\n?", pointer.read_text())
+            if match is None:
+                raise ValueError("unsupported Git metadata pointer")
+            metadata = Path(match[1])
+            if not metadata.is_absolute():
+                metadata = pointer.parent / metadata
+        else:
+            metadata = pointer
+        try:
+            metadata = metadata.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise ValueError("missing or invalid Git metadata pointer") from error
+        if not metadata.is_relative_to(root) or not metadata.is_dir():
+            raise ValueError("Git metadata pointer escapes its owned checkout")
+        if os.path.lexists(metadata / "commondir"):
+            raise ValueError("shared Git common metadata is unsupported")
+        count = 0
+        for item in metadata.rglob("*"):
+            count += 1
+            if count > 100000:
+                raise ValueError("Git metadata entry bound")
+            if item.is_symlink():
+                raise ValueError("Git metadata contains symlinks")
+            if (
+                item.name in ("alternates", "http-alternates")
+                and item.parent.name == "info"
+                and item.parent.parent.name == "objects"
+            ):
+                raise ValueError("Git alternate object pointers are unsupported")
 
 
 def command(argv):
@@ -32,6 +102,7 @@ def hex_hash(value):
 
 def verify(source, output, revision, source_hash, metadata_hash, origin, git, nix_hash):
     source, output = Path(source), Path(output)
+    confine_git(source)
     if (
         source.is_symlink()
         or not source.is_dir()

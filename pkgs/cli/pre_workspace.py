@@ -542,6 +542,12 @@ def git_command(api, directory, *arguments, immutable=False):
 
 
 def verify_git(session, api, label, directory, revision, immutable=False):
+    from pre_workspace_git import confine_git
+
+    try:
+        confine_git(directory, session.env)
+    except ValueError as error:
+        raise StateError(str(error)) from error
     directory = Path(directory)
     require(
         (directory / ".git").is_dir() and not (directory / ".git").is_symlink(),
@@ -594,6 +600,12 @@ def plain_copy(source, destination):
 def confine_cached_git(session, api, package):
     """Reject metadata pointers outside the owned snapshot before native update."""
     cache = Path(package) / "Packages"
+    from pre_workspace_git import confine_git, reject_git_environment
+
+    try:
+        reject_git_environment(session.env)
+    except ValueError as error:
+        raise StateError(str(error)) from error
     if not cache.exists():
         return
     for index, checkout in enumerate(
@@ -602,6 +614,10 @@ def confine_cached_git(session, api, package):
         dotgit = checkout / ".git"
         if not os.path.lexists(dotgit):
             continue
+        try:
+            confine_git(checkout, session.env)
+        except ValueError as error:
+            raise StateError(str(error)) from error
         require(
             checkout.is_dir()
             and not checkout.is_symlink()
@@ -666,6 +682,12 @@ def capture(root, temporary, api, update=None):
     from native_sdk import store_root
 
     root = Path(root)
+    from pre_workspace_git import reject_git_environment
+
+    try:
+        reject_git_environment(os.environ)
+    except ValueError as error:
+        raise StateError(str(error)) from error
     require(not api.sdk_mode(), "portable format 7 has no SDK-bound capture contract")
     layout.canonical(getattr(api, "source_reference", lambda value: value)(root))
     reference = api.purifier_lock_reference(root)
@@ -910,6 +932,7 @@ def validate_runtime(root, lock, api):
             package,
             dict(os.environ, CLANG_MODULE_CACHE_PATH=str(work / "clang-module-cache")),
         )
+        confine_cached_git(session, api, package)
         result = session.run(
             "native-validation",
             [*api.native_command("swift-package"), "--verbose", "dump-package"],
