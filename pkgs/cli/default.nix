@@ -21,7 +21,7 @@ let
   # toolchain: the compiler and linker flags its wrappers read, and PATH.
   # SwiftPM compiles and links manifests with that toolchain, so the
   # command runs it in this environment, as `nix develop` would.
-  selectedSDK = import ../../nix/lib/selected-sdk.nix {
+  selectedSDK = import ../swift-sdk/selected-sdk.nix {
     inherit
       lib
       writeText

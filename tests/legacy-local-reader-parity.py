@@ -105,7 +105,11 @@ def save():
     (w / "receipt.json").write_text(json.dumps(r, indent=2) + "\n")
 
 
-env = dict(os.environ, TMPDIR=str(w / "tmp"), READER=str(source / "nix/lib/lock.nix"))
+env = dict(
+    os.environ,
+    TMPDIR=str(w / "tmp"),
+    READER=str(source / "lib-overlays/default/lock.nix"),
+)
 expr = 'let root = /. + builtins.getEnv "CASE_ROOT"; r=import (/. + builtins.getEnv "READER") {src=root;lockFile=root+"/swiftpm-purifier.lock.json";}; in {problems=r.lock.problems;state=r.workspaceState;}'
 for label, mutate, expected in cases:
     p = w / label
