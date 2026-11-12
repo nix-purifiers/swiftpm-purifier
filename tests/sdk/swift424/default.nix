@@ -43,6 +43,7 @@ pkgs.stdenvNoCC.mkDerivation {
     gcc
     pkgs.git
     pkgs.unzip
+    pkgs.which
   ];
   sdkGlibcHeaders = "${pkgs.glibc.dev}/include";
   sdkCUuidHeaders = "${lib.getDev pkgs.libuuid}/include";
