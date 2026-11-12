@@ -9,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 import dependencies_v1_cache as cache
+import dependencies_v1_snapshot as snapshot
 
 
 class Cache(unittest.TestCase):
@@ -23,6 +24,9 @@ class Cache(unittest.TestCase):
         (self.metadata / "objects/info").mkdir(parents=True)
         (self.metadata / "objects/info/alternates").write_text(
             str(self.bare / "objects") + "\n"
+        )
+        (self.metadata.parent / "Package.swift").write_text(
+            "import PackageDescription\n"
         )
         url = "https://example.invalid/Leaf.git"
         state = {
@@ -96,6 +100,46 @@ class Cache(unittest.TestCase):
                 )
                 with self.assertRaises(cache.Reject):
                     cache.validate(self.root, {})
+
+    def test_dependency_source_links_special_files_and_aliases_refuse(self):
+        checkout = self.metadata.parent
+        sources = checkout / "Sources"
+        sources.mkdir()
+        outside = self.root / "outside.swift"
+        outside.write_text("caller source")
+        leaf = sources / "Leaf.swift"
+        leaf.symlink_to(outside)
+        with self.assertRaises(cache.Reject):
+            cache.validate(self.root, {})
+        leaf.unlink()
+        os.mkfifo(leaf)
+        with self.assertRaises(cache.Reject):
+            cache.validate(self.root, {})
+        leaf.unlink()
+        os.link(outside, leaf)
+        with self.assertRaises(cache.Reject):
+            cache.validate(self.root, {})
+        leaf.unlink()
+        leaf.write_text("public func leaf() {}")
+        self.assertEqual(len(cache.validate(self.root, {})), 1)
+        manifest = checkout / "Package.swift"
+        manifest.unlink()
+        manifest.symlink_to(outside)
+        with self.assertRaises(cache.Reject):
+            cache.validate(self.root, {})
+
+    def test_snapshot_rejects_source_escape_before_destination_creation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            outside = Path(temporary) / "outside.swift"
+            outside.write_text("caller data")
+            source = self.metadata.parent / "Sources"
+            source.mkdir()
+            (source / "Leaf.swift").symlink_to(outside)
+            destination = Path(temporary).resolve() / "owned"
+            with self.assertRaises(cache.Reject):
+                snapshot.snapshot(self.root, destination, {})
+            self.assertFalse(destination.exists())
+            self.assertEqual(outside.read_text(), "caller data")
 
     def test_implicit_environment_is_actual_process_environment(self):
         with patch.dict(os.environ, {"GIT_OBJECT_DIRECTORY": ""}):

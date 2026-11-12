@@ -80,6 +80,51 @@ def regular_bytes(root, relative, limit=1024 * 1024):
         os.close(descriptor)
 
 
+def source_tree(root):
+    """Validate checkout sources without following links or reading special files."""
+    root = Path(root)
+    directory(root)
+    regular_bytes(root, "Package.swift")
+    entries = []
+
+    def visit(parent, depth):
+        require(depth <= 256, "dependency source depth")
+        for path in parent.iterdir():
+            if parent == root and path.name == ".git":
+                continue
+            try:
+                encoded = path.name.encode("utf-8", errors="strict")
+            except UnicodeError as error:
+                raise Reject("dependency source UTF8") from error
+            require(
+                len(encoded) <= 255
+                and not any(ord(c) < 32 or ord(c) == 127 for c in path.name),
+                "dependency source filename",
+            )
+            require(path.name != ".git", "nested dependency Git metadata")
+            facts = path.lstat()
+            is_directory = stat.S_ISDIR(facts.st_mode)
+            require(
+                is_directory or stat.S_ISREG(facts.st_mode),
+                "dependency source link or special file",
+            )
+            require(
+                is_directory or facts.st_nlink == 1, "dependency source hardlink alias"
+            )
+            entries.append(
+                (
+                    str(path.relative_to(root)),
+                    "directory" if is_directory else "regular",
+                )
+            )
+            require(len(entries) <= 100000, "dependency source entry bound")
+            if is_directory:
+                visit(path, depth + 1)
+
+    visit(root, 0)
+    return sorted(entries)
+
+
 def validate(root, environment=None):
     """Pure filesystem validation: no Git, Swift, subprocess or runtime probe."""
     root = Path(root)
@@ -213,6 +258,7 @@ def validate(root, environment=None):
         gitdir = checkout / ".git"
         for path in (checkout, bare, gitdir):
             directory(path)
+        source_tree(checkout)
         require(
             {p.name for p in (root / ".build/repositories").iterdir()}
             == expected_subpaths | {"checkouts-state.json"},
