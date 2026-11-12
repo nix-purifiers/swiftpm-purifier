@@ -18,7 +18,17 @@ class LayoutError(ValueError):
 
 
 def canonical(path):
-    path = Path(path)
+    raw = os.fspath(path)
+    if (
+        not isinstance(raw, str)
+        or "//" in raw
+        or any(part in (".", "..") for part in raw.split("/"))
+        or (raw != "/" and raw.endswith("/"))
+    ):
+        raise LayoutError(
+            "format 7 requires canonical source/lock spelling without slash or dot aliases"
+        )
+    path = Path(raw)
     if not path.is_absolute() or ".." in path.parts:
         raise LayoutError("format 7 requires an absolute canonical source/lock path")
     for current in [*reversed(path.parents), path]:

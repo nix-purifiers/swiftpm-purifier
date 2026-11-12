@@ -298,6 +298,30 @@ root_alias.symlink_to(base)
 run("source-root-symlink", root_alias, valid=False)
 
 
+for name, root, selected in [
+    (
+        "alias-custom-double",
+        base,
+        str(base).replace("/tests/", "//tests/") + "/other.json",
+    ),
+    ("alias-default-double", base, str(base) + "//" + layout.DEFAULT_LOCK),
+    ("alias-external-double", base, str(w) + "//external.lock"),
+    ("alias-custom-dot", base, str(base) + "/./other.json"),
+    ("alias-default-dot", base, str(base) + "/./" + layout.DEFAULT_LOCK),
+    ("alias-external-dot", base, str(w) + "/./external.lock"),
+    ("alias-custom-parent", base, str(base) + "/Sources/../other.json"),
+    ("alias-root-trailing", str(base) + "/", None),
+    ("alias-root-dot", str(base) + "/.", None),
+    (
+        "alias-root-double",
+        str(base).replace("/swiftpm-audit/", "//swiftpm-audit/"),
+        None,
+    ),
+    ("alias-external-trailing", base, str(external) + "/"),
+]:
+    run(name, root, valid=False, selected=selected)
+
+
 def setup(label, argv, env=None):
     row = {"label": label}
     r["commands"].append(row)

@@ -42,7 +42,7 @@ let
           parts;
       initial = {
         path = anchor;
-        kind = if stored then typeAt anchor else "directory";
+        kind = if stored then builtins.readFileType anchor else "directory";
         valid = true;
       };
       ancestors = builtins.foldl' (
@@ -64,7 +64,12 @@ let
         }
       ) initial remaining;
     in
-    builtins.substring 0 1 text == "/" && initial.kind != "symlink" && ancestors.valid;
+    builtins.substring 0 1 text == "/"
+    && builtins.match ".*//.*" text == null
+    && (text == "/" || builtins.match ".*/" text == null)
+    && builtins.all (part: part != "." && part != "..") parts
+    && initial.kind != "symlink"
+    && ancestors.valid;
   inRoot = builtins.substring 0 (builtins.stringLength rootText + 1) lockText == rootText + "/";
   destinationValid =
     canonical lockFile
