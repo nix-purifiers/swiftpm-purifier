@@ -42,7 +42,15 @@ def main():
         env.pop(name, None)
         os.environ.pop(name, None)
     os.environ.update(env)
-    receipt = {"complete": False, "scope": "private explicit original SDK 4.0.3 Linux fixture only; no host lifecycle/public support claim", "commands": [], "captures": [], "consumers": []}
+    def source_manifest():
+        return [{"path": str(path.relative_to(REPO)), "bytes": path.stat().st_size,
+                 "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+                for path in sorted(REPO.rglob("*"))
+                if not {".git", "__pycache__"}.intersection(path.relative_to(REPO).parts)
+                and path.is_file()]
+
+    implementation_files = source_manifest()
+    receipt = {"implementationSource": str(REPO), "implementationFiles": implementation_files, "complete": False, "scope": "private explicit original SDK 4.0.3 Linux fixture only; no host lifecycle/public support claim", "commands": [], "captures": [], "consumers": []}
 
     def save():
         (work / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
@@ -52,7 +60,7 @@ def main():
         result = subprocess.run(command, cwd=cwd, env=env, capture_output=True, timeout=600)
         (work / "logs" / (label + ".stdout")).write_bytes(result.stdout)
         (work / "logs" / (label + ".stderr")).write_bytes(result.stderr)
-        receipt["commands"].append({"label": label, "argv": command, "cwd": str(cwd), "exit": result.returncode})
+        receipt["commands"].append({"label": label, "argv": command, "cwd": str(cwd), "exit": result.returncode, "stdoutSHA256": hashlib.sha256(result.stdout).hexdigest(), "stderrSHA256": hashlib.sha256(result.stderr).hexdigest()})
         save()
         assert result.returncode == expected, (label, result.stderr[-3000:].decode(errors="replace"))
         return result.stdout
@@ -218,6 +226,7 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
         receipt["pureEvaluation"] = result
         assert before == run("caller-after", [TOOLS["nix"], "hash", "path", root]).decode().strip()
         assert (root / "Package.resolved").read_bytes() == original_pins
+        assert source_manifest() == implementation_files, "implementation source changed during run"
         receipt.update(complete=True, callerNARUnchanged=True, originalNativePinsUnchanged=True, requests=requests)
         save()
     finally:

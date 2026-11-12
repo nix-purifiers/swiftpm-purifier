@@ -17,8 +17,9 @@
 # - `packages.<product>`, one per product the lock recorded from
 #   `swift package dump-package`: an executable's binary under bin/, a
 #   dynamic or static library's file under lib/ with its Swift modules,
-#   and, for an automatic library, a plugin or a macro, which SwiftPM
-#   publishes as source, the package's source archive;
+#   and, for a format-8 automatic library, its actual modules and objects.
+#   Earlier protocols expose automatic libraries, plugins and macros as
+#   the package's source archive;
 # - `tests`, the build with `swift test` run in the sandbox;
 # - `release`, the package's source archive, which a package registry
 #   serves and `swiftpm-purifier publish` uploads;
