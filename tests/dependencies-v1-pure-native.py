@@ -27,6 +27,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--work", required=True, type=Path)
     parser.add_argument("--nix-prefetch-git", type=Path, default=TOOLS["nix-prefetch-git"])
+    parser.add_argument("--transitive", action="store_true", help="Root -> Alpha -> Beta actual remote graph")
     args = parser.parse_args()
     if args.nix_prefetch_git is None:
         parser.error("provide the existing nix-prefetch-git executable")
@@ -64,15 +65,6 @@ def main():
     run("sdk-package-version", [SDK / "bin/swift-package", "--version"])
     remote = work / "remote"
     remote.mkdir()
-    for module, package, value in (("Alpha", "AlphaPkg", 20), ("Beta", "BetaPkg", 22)):
-        source = work / (module + "-origin")
-        write(source / "Package.swift", '// swift-tools-version:4.0\nimport PackageDescription\nlet package=Package(name:' + json.dumps(package) + ',products:[.library(name:' + json.dumps(module + "Lib") + ',targets:[' + json.dumps(module) + '])],targets:[.target(name:' + json.dumps(module) + ')])\n')
-        write(source / "Sources" / module / (module + ".swift"), "public func " + module.lower() + "() -> Int { return " + str(value) + " }\n")
-        # Fresh real Git identity, never a doctored captured URL/revision.
-        write(source / "fixture-nonce", str(work) + "\n")
-        for suffix, command in (("init", [TOOLS["git"], "init", "-b", "main", source]), ("add", [TOOLS["git"], "-C", source, "add", "."]), ("commit", [TOOLS["git"], "-C", source, "commit", "-m", "Actual original Swift4 pure fixture"]), ("tag", [TOOLS["git"], "-C", source, "tag", "1.0.0"]), ("bare", [TOOLS["git"], "clone", "--bare", source, remote / (module + ".git")])):
-            run(module + "-" + suffix, command)
-
     requests = []
     class Handler(http.server.BaseHTTPRequestHandler):
         def log_message(self, *_):
@@ -98,13 +90,33 @@ def main():
     thread.start()
     origin = "http://127.0.0.1:" + str(server.server_port)
     try:
+        for module, package, value in (("Alpha", "AlphaPkg", 20), ("Beta", "BetaPkg", 22)):
+            source = work / (module + "-origin")
+            write(source / "Package.swift", '// swift-tools-version:4.0\nimport PackageDescription\nlet package=Package(name:' + json.dumps(package) + ',products:[.library(name:' + json.dumps(module + "Lib") + ',targets:[' + json.dumps(module) + '])],targets:[.target(name:' + json.dumps(module) + ')])\n')
+            write(source / "Sources" / module / (module + ".swift"), "public func " + module.lower() + "() -> Int { return " + str(value) + " }\n")
+            if args.transitive and module == "Alpha":
+                write(source / "Package.swift", '// swift-tools-version:4.0\nimport PackageDescription\nlet package=Package(name:"AlphaPkg",products:[.library(name:"AlphaLib",targets:["Alpha"])],dependencies:[.package(url:' + json.dumps(origin + "/Beta.git") + ',from:"1.0.0")],targets:[.target(name:"Alpha",dependencies:[.product(name:"BetaLib",package:"BetaPkg")])])\n')
+                write(source / "Sources/Alpha/Alpha.swift", "import Beta\npublic func alpha() -> Int { return beta()-2 }\n")
+            # Fresh real Git identity, never a doctored captured URL/revision.
+            write(source / "fixture-nonce", str(work) + "\n")
+            for suffix, command in (("init", [TOOLS["git"], "init", "-b", "main", source]), ("add", [TOOLS["git"], "-C", source, "add", "."]), ("commit", [TOOLS["git"], "-C", source, "commit", "-m", "Actual original Swift4 pure fixture"]), ("tag", [TOOLS["git"], "-C", source, "tag", "1.0.0"]), ("bare", [TOOLS["git"], "clone", "--bare", source, remote / (module + ".git")])):
+                run(module + "-" + suffix, command)
         root = work / "project"
         write(root / "Package.swift", '''// swift-tools-version:4.0
 import PackageDescription
 let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.static,targets:["Core"]),.library(name:"Dynamic",type:.dynamic,targets:["Core"]),.library(name:"Automatic",targets:["Core"]),.executable(name:"PureApp",targets:["Run"])],dependencies:[.package(url:URL_ALPHA,from:"1.0.0"),.package(url:URL_BETA,from:"1.0.0")],targets:[.target(name:"Core",dependencies:[.product(name:"AlphaLib",package:"AlphaPkg"),.product(name:"BetaLib",package:"BetaPkg")]),.target(name:"Run",dependencies:["Core"]),.target(name:"Extra",dependencies:["Core"]),.testTarget(name:"CoreTests",dependencies:["Core"])])
 '''.replace("URL_ALPHA", json.dumps(origin + "/Alpha.git")).replace("URL_BETA", json.dumps(origin + "/Beta.git")))
+        if args.transitive:
+            package_manifest = root / "Package.swift"
+            text = package_manifest.read_text()
+            text = text.replace(',' + '.package(url:' + json.dumps(origin + "/Beta.git") + ',from:"1.0.0")', '')
+            text = text.replace(',.product(name:"BetaLib",package:"BetaPkg")', '')
+            package_manifest.write_text(text)
         write(root / "Sources/Core/AlphaBridge.swift", "import Alpha\npublic func left() -> Int { return alpha() }\n")
         write(root / "Sources/Core/BetaBridge.swift", "import Beta\npublic func right() -> Int { return beta() }\n")
+        if args.transitive:
+            write(root / "Sources/Core/BetaBridge.swift", "public func right() -> Int { return 22 }\n")
+        receipt["graph"] = "root -> Alpha -> Beta" if args.transitive else "root -> Alpha, Beta"
         write(root / "Sources/Core/Core.swift", "public func answer() -> Int { return left()+right() }\n")
         for target in ("Run", "Extra"):
             write(root / "Sources" / target / "main.swift", 'import Core\nprint("ANSWER|\\(answer())")\n')
