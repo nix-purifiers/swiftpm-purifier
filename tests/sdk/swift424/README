@@ -1,0 +1,23 @@
+Original Swift 4.2.4 Ubuntu 18.04 SDK fixture, x86_64-linux only.
+
+This recipe preserves the original Swift compiler and SwiftPM implementations.
+The compiler reports 4.2.4; the bundled SwiftPM reports Swift 4.2.0. These are
+distinct upstream release strings and must remain unchanged.
+
+Packaging adjusts ELF loader metadata and ordinary C runtime search paths using
+the same verified wrapper as the Swift 5.5.3 fixture. The original glibc module
+map's 79 absolute header paths are relocated to real Nix headers. Every module
+directive remains present, and reversing those path substitutions must restore
+the original bytes. The recipe records each header hash and the reverse check.
+The archived Ubuntu libedit ABI-2 payload is copied intact; no ABI-name aliases
+stand in for a different implementation.
+
+The source-owned build hook uses the native option surface and product metadata:
+it omits the unsupported parallel-job option and reads product_type. It does not
+rewrite manifest language versions or synthesize SDK API answers. No editor
+server is supplied by this fixture.
+
+The recipe is test infrastructure, not an exhaustive runtime support claim.
+Portable dependency-state format 2 and pure build behavior require their own
+actual native consumer checks. Local development keeps the installed runtime;
+it does not install this fixture automatically.

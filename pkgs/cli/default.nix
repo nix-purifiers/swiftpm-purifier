@@ -64,6 +64,7 @@ stdenvNoCC.mkDerivation {
       ./test_swiftpm_purifier.py
       ./fixtures/native553
       ./fixtures/native633-v1
+      ./fixtures/native424
     ];
   };
 
