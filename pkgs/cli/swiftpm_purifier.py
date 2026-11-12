@@ -731,7 +731,7 @@ def read_lock(root: Path):
     ):
         raise PurifierError(
             f"{path} has lock format version {lock['version']}, and this swiftpm-purifier reads "
-            f"versions {LEGACY_LOCK_VERSION}, {LOCK_VERSION} and {legacy_state.FORMAT}; run `swiftpm-purifier relock`"
+            f"versions {LEGACY_LOCK_VERSION}, {LOCK_VERSION}, {legacy_state.FORMAT} and {pre_workspace.FORMAT}; run `swiftpm-purifier relock`"
         )
     if lock["version"] == legacy_state.FORMAT:
         try:
