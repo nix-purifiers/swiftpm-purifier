@@ -70,7 +70,12 @@ def save():
 
 
 def check(
-    name, expected, change=lambda lock: None, raw_change=lambda raw: raw, override=False
+    name,
+    expected,
+    change=lambda lock: None,
+    raw_change=lambda raw: raw,
+    override=False,
+    public_selector=None,
 ):
     lock = copy.deepcopy(base)
     change(lock)
@@ -96,11 +101,44 @@ def check(
     (output / (name + ".stdout")).write_bytes(result.stdout)
     (output / (name + ".stderr")).write_bytes(result.stderr)
     nix_ok = result.returncode == 0 and json.loads(result.stdout)["valid"]
+    public_expression = """let
+      root = /. + builtins.getEnv "PARITY_ROOT";
+      overlay = (import (/. + builtins.getEnv "PARITY_PUBLIC") {}).overlay {} {};
+      selector = builtins.getEnv "PARITY_PUBLIC_SELECTOR";
+      result = overlay.swiftpm-purifier.readLock ({ src = root; } //
+        (if selector == "omit" then {} else { packageResolved =
+          if selector == "null" then null else if selector == "default" then root + "/Package.resolved"
+          else if selector == "empty" then "" else /. + selector; }));
+    in result"""
+    public = bounded_native.run(
+        ["nix", "eval", "--impure", "--json", "--expr", public_expression],
+        env=dict(
+            os.environ,
+            PARITY_ROOT=str(root),
+            PARITY_PUBLIC=str(source / "lib-overlays/default/default.nix"),
+            PARITY_PUBLIC_SELECTOR=public_selector
+            if public_selector is not None
+            else str(root / "missing-native")
+            if override
+            else "omit",
+        ),
+        timeout=30,
+        output_limit=1024 * 1024,
+    )
+    (output / (name + ".public.stdout")).write_bytes(public.stdout)
+    (output / (name + ".public.stderr")).write_bytes(public.stderr)
+    public_ok = public.returncode == 0 and json.loads(public.stdout)["problems"] == []
     report["cases"].append(
-        {"name": name, "expected": expected, "python": python_ok, "nix": nix_ok}
+        {
+            "name": name,
+            "expected": expected,
+            "python": python_ok,
+            "nix": nix_ok,
+            "public": public_ok,
+        }
     )
     save()
-    assert python_ok == nix_ok == expected, report["cases"][-1]
+    assert python_ok == nix_ok == public_ok == expected, report["cases"][-1]
 
 
 check("valid-dual-nars", True)
@@ -110,6 +148,8 @@ check("workspace-state-forbidden", False, lambda l: l.update(workspaceStateVersi
 check("wrong-protocol", False, lambda l: l.update(nativeProtocol="workspace"))
 check("wrong-version", False, lambda l: l.update(version=6))
 check("boolean-version", False, lambda l: l.update(version=True))
+check("float-version", False, lambda l: l.update(version=7.0))
+check("unknown-version", False, lambda l: l.update(version=8))
 check("bad-source-hash", False, lambda l: l["pins"]["Leaf"].update(hash="sha256-bad"))
 check(
     "bad-metadata-hash", False, lambda l: l["pins"]["Leaf"].update(gitHash="sha256-bad")
@@ -144,6 +184,19 @@ check(
     "duplicate-escaped-json",
     False,
     raw_change=lambda raw: raw[:-1] + b',"vers\\u0069on":7}',
+)
+check("public-explicit-null", True, public_selector="null")
+check("public-explicit-default", False, override=True, public_selector="default")
+check("public-explicit-empty", False, override=True, public_selector="empty")
+external_native = output / "external-native"
+external_native.write_text("{}")
+check(
+    "public-external-native", False, override=True, public_selector=str(external_native)
+)
+external_alias = output / "external-native-alias"
+external_alias.symlink_to(external_native)
+check(
+    "public-aliased-native", False, override=True, public_selector=str(external_alias)
 )
 for filename in ("Package.pins", "Package.resolved"):
     (root / filename).write_text("{}")
@@ -189,6 +242,7 @@ report["readerSha256"] = {
     for name in (
         "pkgs/cli/pre_workspace.py",
         "lib-overlays/default/pre-workspace-state.nix",
+        "lib-overlays/default/default.nix",
     )
 }
 save()
