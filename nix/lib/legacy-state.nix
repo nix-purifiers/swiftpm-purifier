@@ -151,7 +151,9 @@ let
     && (binding.sha256 == null || sha256 binding.sha256);
   parent = builtins.dirOf (toString nativeFile);
   entries = if builtins.pathExists parent then builtins.readDir parent else { };
-  fileType = entries.${builtins.baseNameOf (toString nativeFile)} or "missing";
+  fileType =
+    entries.${builtins.unsafeDiscardStringContext (builtins.baseNameOf (toString nativeFile))}
+    or "missing";
   raw = if fileType == "regular" then builtins.readFile nativeFile else "";
   native =
     if fileType == "regular" && builtins.stringLength raw <= 1048576 then
