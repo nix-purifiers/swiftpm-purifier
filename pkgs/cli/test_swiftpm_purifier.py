@@ -4,6 +4,7 @@ import copy
 import os
 import sys
 import time
+import shlex
 import json
 import shutil
 import tempfile
@@ -12,6 +13,159 @@ from pathlib import Path
 from unittest import mock
 
 import swiftpm_purifier as sp
+import legacy_manifest as lm
+
+
+class LegacyManifestProtocol(unittest.TestCase):
+    fixture = Path(__file__).parent / "fixtures/native311"
+
+    def test_actual_native_multimodule_products(self):
+        raw = (self.fixture / "multimodule-protocol.json").read_bytes()
+        data = json.loads(raw)
+        products = lm.protocol(raw, data["package"])
+        graph = {
+            "name": "multi",
+            "modules": [
+                {"name": name, "is_test": False, "type": "library"}
+                for name in ("One", "Two")
+            ],
+        }
+        self.assertEqual(
+            lm.product_view(products, graph, "multi"),
+            [
+                {
+                    "name": "Combo",
+                    "type": "library",
+                    "linkage": "dynamic",
+                    "modules": ["One", "Two"],
+                },
+                {
+                    "name": "StaticCombo",
+                    "type": "library",
+                    "linkage": "static",
+                    "modules": ["One", "Two"],
+                },
+            ],
+        )
+
+    def test_actual_error_protocol_never_accepts_fallback_version(self):
+        raw = (self.fixture / "invalid-version-protocol.json").read_bytes()
+        with self.assertRaisesRegex(lm.ManifestError, "reported errors"):
+            lm.protocol(raw, json.loads(raw)["package"])
+
+    def test_library_modules_and_tests_are_not_inferred_products(self):
+        graph = {
+            "name": "library",
+            "modules": [
+                {"name": "library", "is_test": False, "type": "library"},
+                {"name": "libraryTests", "is_test": True, "type": "library"},
+            ],
+        }
+        self.assertEqual(lm.product_view([], graph, "library"), [])
+
+    def test_alias_keeps_implicit_native_executable(self):
+        graph = {
+            "name": "library",
+            "modules": [{"name": "library", "is_test": False, "type": "executable"}],
+        }
+        self.assertEqual(
+            lm.product_view(
+                [{"name": "Alias", "type": "exe", "modules": ["library"]}],
+                graph,
+                "library",
+            ),
+            [
+                {"name": "Alias", "type": "executable", "modules": ["library"]},
+                {"name": "library", "type": "executable", "modules": ["library"]},
+            ],
+        )
+
+    def test_unavailable_module_and_ambiguous_names_rejected(self):
+        graph = {
+            "name": "library",
+            "modules": [{"name": "library", "is_test": False, "type": "executable"}],
+        }
+        for product in (
+            {"name": "Alias", "type": "a", "modules": ["Missing"]},
+            {"name": "library", "type": "a", "modules": ["library"]},
+        ):
+            with self.assertRaises(lm.ManifestError):
+                lm.product_view([product], graph, "library")
+
+    def test_duplicate_keys_and_non_json_constants_rejected(self):
+        for raw in (b'{"name":1,"name":2}', b'{"version":NaN}'):
+            with self.assertRaises(lm.ManifestError):
+                lm.json_value(raw)
+        with self.assertRaisesRegex(lm.ManifestError, "bound"):
+            lm.json_value(b" " * (1024 * 1024 + 1))
+
+    def test_protocol_package_shape_and_product_mutations(self):
+        baseline = json.loads((self.fixture / "multimodule-protocol.json").read_bytes())
+        cases = []
+        bad = copy.deepcopy(baseline)
+        bad["package"]["name"] = "Other"
+        cases.append(bad)
+        bad = copy.deepcopy(baseline)
+        bad["products"][0]["modules"] = ["One", "One"]
+        cases.append(bad)
+        bad = copy.deepcopy(baseline)
+        bad["products"][0]["type"] = "automatic"
+        cases.append(bad)
+        bad = copy.deepcopy(baseline)
+        bad["products"][1]["name"] = "Combo"
+        cases.append(bad)
+        bad = copy.deepcopy(baseline)
+        bad["products"][0]["name"] = "../escape"
+        cases.append(bad)
+        bad = copy.deepcopy(baseline)
+        bad["errors"] = None
+        cases.append(bad)
+        for data in cases:
+            with self.subTest(data=data), self.assertRaises(lm.ManifestError):
+                lm.protocol(json.dumps(data), baseline["package"])
+
+    def test_authoritative_invocation_spaces_and_rejection_controls(self):
+        # Contract-shaped filesystem data exercises framing only. No fake
+        # compiler or library is executed, probed, or claimed as a real SDK.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            package = root / "project with spaces"
+            package.mkdir()
+            manifest = package / "Package.swift"
+            manifest.write_text("// framing fixture")
+            compiler = root / "compiler with spaces"
+            compiler.write_text("unused")
+            compiler.chmod(0o755)
+            library = root / "library with spaces"
+            library.mkdir()
+            for name in ("PackageDescription.swiftmodule", "libPackageDescription.so"):
+                (library / name).touch()
+            argv = [
+                str(compiler),
+                "--driver-mode=swift",
+                "-I",
+                str(library),
+                "-L",
+                str(library),
+                "-lPackageDescription",
+                str(manifest),
+                "-fileno",
+                "5",
+            ]
+            output = (shlex.join(argv) + '\n{"name":"Project"}').encode()
+            command, description = lm.invocation(output, package)
+            self.assertEqual(command, argv[:-2])
+            self.assertEqual(description, {"name": "Project"})
+            for candidate in (
+                output + b"noise",
+                output.replace(b"-fileno", b"-unknown-fd"),
+                output.replace(b"Package.swift", b"Other.swift"),
+            ):
+                with self.assertRaises(lm.ManifestError):
+                    lm.invocation(candidate, package)
+            (library / "libPackageDescription.so").unlink()
+            with self.assertRaisesRegex(lm.ManifestError, "binding"):
+                lm.invocation(output, package)
 
 
 class NativeProtocolBoundaries(unittest.TestCase):
