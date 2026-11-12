@@ -14,6 +14,140 @@ from unittest import mock
 
 import swiftpm_purifier as sp
 import legacy_manifest as lm
+import legacy_state as ls
+
+
+class LegacyWorkspaceCodec(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        (self.root / "Package.swift").write_text(
+            '// swift-tools-version:3.1\nimport PackageDescription\nlet package=Package(name:"Project")\n'
+        )
+        fixture = Path(__file__).parent / "fixtures/native311"
+        raw = (fixture / "Package.pins").read_bytes()
+        (self.root / "Package.pins").write_bytes(raw)
+        native = json.loads(raw)["pins"][0]
+        checkout = json.loads((fixture / "workspace-state.json").read_text())[
+            "dependencies"
+        ][0]
+        self.lock = {
+            "version": 6,
+            "workspaceStateVersion": 1,
+            "package": "Project",
+            "rootDirectory": "Project",
+            "pins": {
+                native["package"]: {
+                    "name": native["package"],
+                    "sourceLocation": native["repositoryURL"],
+                    "revision": checkout["currentRevision"],
+                    "version": checkout["currentVersion"],
+                    "hash": "sha256-" + "A" * 43 + "=",
+                }
+            },
+            "localDependencies": [],
+            "binaryTargets": [],
+            "products": [],
+            "nativeToolLock": {
+                "file": "Package.pins",
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            },
+            "manifestHash": sp.manifest_hash(self.root),
+        }
+        self.save()
+        self.override = mock.patch.object(sp, "TOOL_LOCK_OVERRIDE", None)
+        self.override.start()
+        self.addCleanup(self.override.stop)
+        self.lock_override = mock.patch.object(sp, "LOCK_OVERRIDE", None)
+        self.lock_override.start()
+        self.addCleanup(self.lock_override.stop)
+
+    def save(self):
+        self.lock["contentHash"] = sp.content_hash(self.lock)
+        (self.root / sp.LOCK_NAME).write_text(json.dumps(self.lock))
+
+    def test_actual_native_metadata_and_git_version_are_accepted(self):
+        self.assertEqual(sp.read_lock(self.root), self.lock)
+        self.assertTrue(sp.is_current(self.root, self.lock))
+        self.assertEqual(
+            ls.workspace(self.lock)["dependencies"][0]["basedOn"]["currentRevision"],
+            self.lock["pins"]["LegacyLeaf"]["revision"],
+        )
+
+    def test_changed_native_bytes_rejected_before_runtime_or_tree(self):
+        with (self.root / "Package.pins").open("ab") as stream:
+            stream.write(b" ")
+        with (
+            mock.patch.object(
+                sp,
+                "observe_host_runtime",
+                side_effect=AssertionError("runtime must not be probed"),
+            ),
+            mock.patch.object(
+                sp,
+                "nix_build",
+                side_effect=AssertionError("tree must not be built"),
+            ),
+        ):
+            with self.assertRaises(sp.PurifierError):
+                sp.prefetch(self.root)
+        self.assertFalse((self.root / ".build").exists())
+
+    def test_current_legacy_lock_does_not_convert_back_to_four(self):
+        before = (self.root / sp.LOCK_NAME).read_bytes()
+        with (
+            mock.patch.object(sp, "sdk_mode", return_value=False),
+            mock.patch.object(sp, "require_runtime"),
+            mock.patch.object(
+                sp,
+                "relock",
+                side_effect=AssertionError("idempotent lock must not recapture"),
+            ),
+        ):
+            sp.lock_command(self.root, False)
+        self.assertEqual((self.root / sp.LOCK_NAME).read_bytes(), before)
+
+    def test_sdk_binding_is_rejected_before_measurement(self):
+        with mock.patch.object(
+            sp,
+            "native_sdk_identity",
+            side_effect=AssertionError("no invented SDK binding"),
+        ):
+            with self.assertRaisesRegex(sp.PurifierError, "no SDK-bound"):
+                sp.require_native_sdk(self.lock)
+
+    def test_empty_graph_native_absence_is_preserved(self):
+        (self.root / "Package.pins").unlink()
+        self.lock["pins"] = {}
+        self.lock["nativeToolLock"]["sha256"] = None
+        self.save()
+        self.assertEqual(sp.read_lock(self.root), self.lock)
+        self.assertFalse((self.root / "Package.pins").exists())
+        (self.root / "Package.pins").write_text(
+            '{"version":1,"autoPin":true,"pins":[]}'
+        )
+        with self.assertRaises(sp.PurifierError):
+            sp.read_lock(self.root)
+
+    def test_renderer_matches_actual_edited_native_record(self):
+        fixture = (
+            Path(__file__).parent / "fixtures/native311/edited-workspace-state.json"
+        )
+        native = json.loads(fixture.read_text())
+        expected = copy.deepcopy(native)
+        checkout = native["dependencies"][0]["basedOn"]
+        expected["dependencies"][0]["basedOn"]["subpath"] = "LegacyLeaf"
+        lock = {
+            "pins": {
+                "LegacyLeaf": {
+                    "revision": checkout["currentRevision"],
+                    "version": checkout["currentVersion"],
+                    "sourceLocation": checkout["repositoryURL"],
+                }
+            }
+        }
+        self.assertEqual(ls.workspace(lock), expected)
 
 
 class LegacyManifestProtocol(unittest.TestCase):
