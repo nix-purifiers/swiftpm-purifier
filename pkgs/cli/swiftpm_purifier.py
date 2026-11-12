@@ -27,6 +27,7 @@ import bounded_native
 import native_sdk
 import host_runtime
 import legacy_manifest
+import legacy_runtime
 import legacy_state
 import pre_workspace
 import pre_workspace_install
@@ -604,7 +605,10 @@ def require_runtime(root, lock):
     observation = observe_host_runtime()
     # The real host compiler/SwiftPM validate the project's manifest API.
     # Observations never impose a version, path, or binary-hash lock-in.
-    products(root, os.environ, [])
+    if lock.get("version") == 4 and lock.get("workspaceStateVersion") == 2:
+        legacy_runtime.validate(sys.modules[__name__], root, lock)
+    else:
+        products(root, os.environ, [])
     return observation
 
 
@@ -1138,6 +1142,10 @@ def products(package: Path, env, isolation):
             env=env,
         )
     )
+    return product_description(description)
+
+
+def product_description(description):
     result = []
     for product in description["products"]:
         if "product_type" in product:

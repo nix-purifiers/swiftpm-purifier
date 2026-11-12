@@ -60,6 +60,7 @@ stdenvNoCC.mkDerivation {
       ./swiftpm_purifier.py
       ./bounded_native.py
       ./legacy_manifest.py
+      ./legacy_runtime.py
       ./dependencies_v1_transaction.py
       ./dependencies_v1_capture.py
       ./dependencies_v1_ownership.py
@@ -121,6 +122,7 @@ stdenvNoCC.mkDerivation {
     cp pkgs/cli/swiftpm_purifier.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/bounded_native.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/legacy_manifest.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/legacy_runtime.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_transaction.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_capture.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_ownership.py $out/libexec/swiftpm-purifier/
