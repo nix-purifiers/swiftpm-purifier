@@ -1,0 +1,12 @@
+{
+  "autoPin": true,
+  "pins": [
+    {
+      "package": "LegacyLeaf",
+      "reason": null,
+      "repositoryURL": "http://127.0.0.1:43917/Leaf.git",
+      "version": "1.0.0"
+    }
+  ],
+  "version": 1
+}

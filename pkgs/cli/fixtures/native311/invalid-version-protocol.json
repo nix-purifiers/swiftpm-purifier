@@ -1,0 +1,1 @@
+{"errors": ["Invalid version string: bad"], "package": {"dependencies": [{"url": "http://127.0.0.1:1/No.git", "version": {"lowerBound": "0.0.0", "upperBound": "2.0.0"}}], "exclude": [], "name": "library", "targets": []}, "products": []}

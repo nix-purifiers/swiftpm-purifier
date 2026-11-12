@@ -26,6 +26,8 @@ from pathlib import Path
 import bounded_native
 import native_sdk
 import host_runtime
+import legacy_manifest
+import legacy_state
 
 LOCK_NAME = "swiftpm-purifier.lock.json"
 LOCK_VERSION = 5
@@ -50,6 +52,19 @@ def resolved_path(root: Path) -> Path:
     if TOOL_LOCK_OVERRIDE:
         return Path(TOOL_LOCK_OVERRIDE).resolve()
     return root / "Package.resolved"
+
+
+def legacy_native_path(root: Path) -> Path:
+    logical = root / "Package.pins"
+    if logical.is_symlink() or (logical.exists() and not logical.is_file()):
+        raise PurifierError("logical Package.pins must be a regular file or absent")
+    if TOOL_LOCK_OVERRIDE:
+        return resolved_path(root)
+    if logical.exists() and (root / "Package.resolved").exists():
+        raise PurifierError(
+            "both native pin formats are present; select --tool-lockfile explicitly"
+        )
+    return logical
 
 
 def nix_lock_arguments(root: Path) -> str:
@@ -211,6 +226,18 @@ def pinned_at(pin: dict) -> str:
 def is_current(root: Path, lock: dict) -> bool:
     """Whether the lockfile covers the pins of Package.resolved, as
     lock.nix checks, and the manifests the lock run saw."""
+    if lock.get("version") == legacy_state.FORMAT:
+        try:
+            legacy_state.validate(lock, legacy_native_path(root))
+        except legacy_state.StateError as error:
+            raise PurifierError(
+                str(error) + "; run `swiftpm-purifier relock`"
+            ) from error
+        return lock.get("manifestHash") == manifest_hash(root)
+    if lock.get("workspaceStateVersion") == 1:
+        raise PurifierError(
+            "native workspace format 1 requires portable lock format 6; run `swiftpm-purifier relock`"
+        )
     if lock.get("workspaceStateVersion") == 2 and not legacy_state_lock_valid(
         root, lock
     ):
@@ -368,6 +395,27 @@ def require_runtime(root, lock):
         raise PurifierError(
             "this format 5 lock is bound to an immutable SDK; use explicit SDK mode, or deliberately run local `relock` to capture a portable format 4 lock"
         )
+    if lock["version"] == legacy_state.FORMAT:
+        try:
+            legacy_state.validate(lock, legacy_native_path(root))
+        except legacy_state.StateError as error:
+            raise PurifierError(str(error)) from error
+        observation = observe_host_runtime()
+        description = legacy_manifest.json_value(
+            output(
+                [*native_command("swift-package"), "dump-package"],
+                cwd=root,
+                env=os.environ,
+            )
+        )
+        if (
+            not isinstance(description, dict)
+            or description.get("name") != lock["package"]
+        ):
+            raise PurifierError(
+                "selected native runtime disagrees with the legacy package manifest"
+            )
+        return observation
     observation = observe_host_runtime()
     # The real host compiler/SwiftPM validate the project's manifest API.
     # Observations never impose a version, path, or binary-hash lock-in.
@@ -468,6 +516,7 @@ def native_options(command, subcommand="resolve"):
                 for marker in (
                     "could not find package.swift",
                     "root manifest not found",
+                    "rootmanifestfilenotfound",
                 )
             )
             unknown = "unknown option" in error
@@ -555,6 +604,10 @@ def native_sdk_identity():
 
 
 def require_native_sdk(lock):
+    if lock["version"] == legacy_state.FORMAT:
+        raise PurifierError(
+            "portable legacy format 6 has no SDK-bound CLI contract; use local mode or an explicit pure-builder SDK"
+        )
     if lock["version"] == LEGACY_LOCK_VERSION:
         return
     actual = native_sdk_identity()
@@ -616,10 +669,22 @@ def read_lock(root: Path):
     if type(lock["version"]) is not int or lock["version"] not in (
         LEGACY_LOCK_VERSION,
         LOCK_VERSION,
+        legacy_state.FORMAT,
     ):
         raise PurifierError(
             f"{path} has lock format version {lock['version']}, and this swiftpm-purifier reads "
-            f"versions {LEGACY_LOCK_VERSION} and {LOCK_VERSION}; run `swiftpm-purifier relock`"
+            f"versions {LEGACY_LOCK_VERSION}, {LOCK_VERSION} and {legacy_state.FORMAT}; run `swiftpm-purifier relock`"
+        )
+    if lock["version"] == legacy_state.FORMAT:
+        try:
+            legacy_state.validate(lock, legacy_native_path(root))
+        except legacy_state.StateError as error:
+            raise PurifierError(
+                str(error) + "; run `swiftpm-purifier relock`"
+            ) from error
+    elif lock.get("workspaceStateVersion") == 1:
+        raise PurifierError(
+            "native workspace format 1 requires portable lock format 6; run `swiftpm-purifier relock`"
         )
     if lock["version"] == LOCK_VERSION:
         if "nativeSDK" not in lock:
@@ -906,8 +971,24 @@ def relock(root: Path, update=None):
         # With a lockfile of SwiftPM kept outside the package, the lock run
         # starts from that copy when it exists, and from the copy in the
         # package otherwise.
+        override_legacy = None
         if TOOL_LOCK_OVERRIDE and resolved_path(root).exists():
-            shutil.copyfile(resolved_path(root), package / "Package.resolved")
+            external = read_json(resolved_path(root))
+            override_legacy = (
+                isinstance(external, dict)
+                and external.get("version") == 1
+                and "object" not in external
+                and "pins" in external
+            )
+            if override_legacy:
+                try:
+                    legacy_state.native_pins(resolved_path(root))
+                except legacy_state.StateError as error:
+                    raise PurifierError(str(error)) from error
+            shutil.copyfile(
+                resolved_path(root),
+                package / ("Package.pins" if override_legacy else "Package.resolved"),
+            )
         env = dict(os.environ, CLANG_MODULE_CACHE_PATH=str(work / "clang-module-cache"))
         isolation = swiftpm_isolation(work)
         print(
@@ -934,19 +1015,43 @@ def relock(root: Path, update=None):
 
         state_path = package / ".build" / "workspace-state.json"
         if not state_path.exists():
-            legacy_state = package / ".build" / "dependencies-state.json"
-            if legacy_state.exists():
-                version = read_json(legacy_state).get("version")
+            legacy_state_path = package / ".build" / "dependencies-state.json"
+            if legacy_state_path.exists():
+                version = read_json(legacy_state_path).get("version")
                 if version != 2:
                     raise PurifierError(
                         f"SwiftPM dependency-state format {version} is not supported by this purifier"
                     )
-                state_path = legacy_state
+                state_path = legacy_state_path
             else:
-                raise PurifierError(
-                    "SwiftPM did not produce a recognized dependency-state file"
+                # Some original parsers accept `resolve` without materializing
+                # workspace state. Ask their actual `fetch` parser and run it.
+                native_options(tuple(native_command("swift-package")), "fetch")
+                run(
+                    [*native_command("swift-package"), *isolation, "fetch"],
+                    cwd=package,
+                    env=env,
                 )
+                if not state_path.exists():
+                    raise PurifierError(
+                        "SwiftPM did not produce a recognized dependency-state file"
+                    )
         state = json.loads(state_path.read_text())
+        if state.get("version") == 1:
+            if override_legacy is False:
+                raise PurifierError(
+                    "selected external file is not original native Package.pins metadata"
+                )
+            try:
+                return legacy_state.capture(
+                    root, package, state, env, isolation, sys.modules[__name__]
+                )
+            except (legacy_state.StateError, legacy_manifest.ManifestError) as error:
+                raise PurifierError(str(error)) from error
+        if override_legacy:
+            raise PurifierError(
+                "selected external Package.pins format does not match the actual runtime workspace"
+            )
         if state["version"] == 2:
             names = []
             for dependency in state["object"]["dependencies"]:
@@ -1097,7 +1202,15 @@ def lock_command(root: Path, force: bool):
         # A lockfile that cannot be read is replaced.
         print(f"swiftpm-purifier: {error}", file=sys.stderr)
         lock = None
-    expected_version = LOCK_VERSION if sdk_mode() else LEGACY_LOCK_VERSION
+    expected_version = (
+        LOCK_VERSION
+        if sdk_mode()
+        else (
+            legacy_state.FORMAT
+            if lock and lock["version"] == legacy_state.FORMAT
+            else LEGACY_LOCK_VERSION
+        )
+    )
     if lock and not force and lock["version"] == expected_version:
         require_runtime(root, lock)
     if (
@@ -1429,6 +1542,24 @@ def swift_command(arguments):
             "run `swiftpm-purifier lock`, which resolves and records the new dependencies"
         )
     prefetch(root)
+    if lock["version"] == legacy_state.FORMAT:
+        selected = legacy_native_path(root)
+        logical = root / "Package.pins"
+        original = logical.read_bytes() if logical.exists() else None
+        if selected != logical:
+            if selected.exists():
+                logical.write_bytes(selected.read_bytes())
+            elif logical.exists():
+                logical.unlink()
+        try:
+            status = subprocess.run([swift, *arguments], check=False).returncode
+        finally:
+            if original is None:
+                if logical.exists():
+                    logical.unlink()
+            elif not logical.exists() or logical.read_bytes() != original:
+                logical.write_bytes(original)
+        raise SystemExit(status)
     # SwiftPM deletes Package.resolved when every dependency is edited,
     # because no pin is left for it to write. The lockfile reads its pins
     # from Package.resolved, so the file goes back after SwiftPM exits.

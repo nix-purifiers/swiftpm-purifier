@@ -1,0 +1,2 @@
+Raw original Swift 3.1.1 PackageDescription protocol output retained from native controls 316 and 318. The invalid-version fixture deliberately retains errors and the native fallback bound; readers must reject it. These fixtures do not establish purifier compatibility or SDK attestation.
+Package.pins and workspace-state.json are original native control 286 bytes. Reader controls construct synthetic format6 records around this native metadata; their placeholder Git hash is not a fetch or SDK attestation.

@@ -63,7 +63,7 @@
   fetchers ? { },
   lockFile ? src + "/swiftpm-purifier.lock.json",
   # SwiftPM's lockfile, which a flake can keep outside `src`.
-  packageResolved ? src + "/Package.resolved",
+  packageResolved ? null,
   buildConfig ? "release",
   artifactBuildInputs ? [ ],
   # Explicit assertion that these locked dynamic products expose a public C ABI.
@@ -94,8 +94,9 @@ let
 
   # Links the tree into the package root and fills in the workspace state.
   linkTree = ''
-    ${lib.optionalString (builtins.pathExists packageResolved) ''
-      cp --no-preserve=mode ${packageResolved} Package.resolved
+    ${lib.optionalString (read.lockVersion == 6) "rm -f ${lib.escapeShellArg read.toolLockName}"}
+    ${lib.optionalString (builtins.pathExists read.toolLockFile) ''
+      cp --no-preserve=mode ${read.toolLockFile} ${lib.escapeShellArg read.toolLockName}
     ''}
     for entry in $(cd ${tree} && find . -mindepth 1 -type l -printf '%P\n'); do
       mkdir -p "$(dirname "$entry")"
@@ -199,7 +200,12 @@ let
         # nixpkgs' install phase installs executables and dynamic libraries;
         # static libraries are installed here.
         postInstall = ''
-          products=$(swift build -c ${buildConfig} --show-bin-path)
+          products=${
+            if read.lockVersion == 6 then
+              lib.escapeShellArg ".build/${buildConfig}"
+            else
+              "$(swift build -c ${buildConfig} --show-bin-path)"
+          }
           for library in ${lib.escapeShellArgs staticLibraries}; do
             install -D -t "$out/lib" "$products/lib$library.a"
             for module in "$products"/Modules/*.swiftmodule "$products"/*.swiftmodule; do
@@ -213,6 +219,9 @@ let
           inherit (read) lock;
           inherit tree;
         };
+      }
+      // lib.optionalAttrs (read.lockVersion == 6) {
+        swiftpmPurifierProducts = writeText "legacy-native-products.json" (builtins.toJSON read.products);
       }
       // builtins.removeAttrs extraArgs [
         "nativeBuildInputs"

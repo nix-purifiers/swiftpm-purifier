@@ -1,0 +1,1 @@
+{"errors": [], "package": {"dependencies": [], "exclude": [], "name": "multi", "targets": []}, "products": [{"modules": ["One", "Two"], "name": "Combo", "type": "dylib"}, {"modules": ["One", "Two"], "name": "StaticCombo", "type": "a"}]}
