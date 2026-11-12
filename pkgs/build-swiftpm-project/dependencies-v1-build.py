@@ -6,8 +6,6 @@ import json
 import os
 from pathlib import Path
 import shutil
-import re
-import shlex
 
 
 def require(condition, message):
@@ -28,11 +26,8 @@ def pins_unchanged(root, lock):
 
 
 def edited_state(root, lock):
-    return {"version": 1, "object": {"dependencies": [
-        {"basedOn": None, "name": name, "repositoryURL": pin["sourceLocation"],
-         "state": {"name": "edited", "path": str(root / "Packages" / name)}, "subpath": name}
-        for name, pin in sorted(lock["pins"].items())
-    ]}}
+    import dependencies_v1_projection as projection
+    return projection.edited_state(root, lock["pins"])
 
 
 def prepare(args):
@@ -82,30 +77,11 @@ def prepare(args):
 
 def root_invocation(raw, root, pin_names, expected_compiler):
     """Admit only actual compiler observations for this owned edited graph."""
-    import dependencies_v1_layout as layout
-    import legacy_manifest
-    require(isinstance(raw, bytes) and len(raw) <= 1024 * 1024, "verbose manifest bound")
-    lines = raw.decode("utf-8").splitlines(keepends=True)
-    if lines and lines[0] == "which clang\n":
-        lines = lines[1:]
-    boundary = next((i for i, line in enumerate(lines) if line.rstrip("\r\n") == "{"), None)
-    require(boundary is not None and 0 < boundary <= len(pin_names) + 1, "bounded manifest invocation sequence")
-    description = "".join(lines[boundary:])
-    allowed = {root} | {root / "Packages" / name for name in pin_names}
-    observed = []
-    parents = set()
-    for line in lines[:boundary]:
-        argv = shlex.split(line)
-        manifests = [Path(value) for value in argv if Path(value).is_absolute() and re.fullmatch(r"Package(@swift-[0-9.]+)?\.swift", Path(value).name)]
-        require(len(manifests) == 1, "one native manifest per invocation")
-        parent = layout.canonical(manifests[0].parent)
-        require(parent in allowed and parent not in parents, "unique owned edited manifest parent")
-        compiler, decoded = legacy_manifest.invocation((line + description).encode(), parent)
-        require(compiler[0] == expected_compiler, "explicit selected compiler identity")
-        observed.append((parent, compiler, decoded))
-        parents.add(parent)
-    require(observed[0][0] == root, "root manifest invocation first")
-    return observed[0][1], observed[0][2]
+    import dependencies_v1_manifest as manifest
+    allowed = {root / "Packages" / name for name in pin_names}
+    compiler, dump = manifest.invocation(raw, root, allowed)
+    require(compiler[0] == expected_compiler, "explicit selected compiler identity")
+    return compiler, dump
 
 
 def install(args):
@@ -115,6 +91,7 @@ def install(args):
     import pre_workspace
     import dependencies_v1_manifest as manifest
     import dependencies_v1_plan as plan
+    import dependencies_v1_projection as projection
     import legacy_manifest
     root = Path(args.root).resolve()
     lock = decode(args.lock)
@@ -129,15 +106,18 @@ def install(args):
     graph = legacy_manifest.json_value(session.run("pure-root-description", [args.package_command, "describe", "--type", "json"]).stdout)
     manifest.inventory(dump, graph, protocol.protocol, root)
     inventories = {}
+    sources = {name: root / "Packages" / name for name in lock["pins"]}
     for index, (name, pin) in enumerate(sorted(lock["pins"].items())):
         probe = session.evidence / ("dependency-" + str(index))
-        shutil.copytree(root / "Packages" / name, probe, symlinks=True)
+        projection.writable_source(sources[name], probe)
+        allowed = projection.prepare_probe(probe, lock["pins"], sources, name)
         validation = session.run("pure-dependency-" + str(index) + "-validation", [args.package_command, "--verbose", "dump-package"], cwd=probe)
-        invocation, declared = root_invocation(validation.stdout, probe, [], args.compiler)
+        invocation, declared = root_invocation(validation.stdout, probe, [path.name for path in allowed], args.compiler)
         fd = session.run("pure-dependency-" + str(index) + "-protocol", invocation, cwd=probe, protocol_flag="-fileno")
         require(not fd.stdout, "unexpected dependency manifest stdout")
         dependency_graph = legacy_manifest.json_value(session.run("pure-dependency-" + str(index) + "-description", [args.package_command, "describe", "--type", "json"], cwd=probe).stdout)
         inventory = manifest.inventory(declared, dependency_graph, fd.protocol, probe)
+        projection.verify_probe(probe, lock["pins"], name, declared)
         require(inventory["package"] == name, "actual dependency package name")
         inventories[pin["sourceLocation"]] = inventory
     manifest.join_references(dump, graph, inventories)
