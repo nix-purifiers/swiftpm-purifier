@@ -123,6 +123,29 @@ root = relocated
 state = root / ".build/swiftpm-purifier" / install.STATE
 assert not install.install(root, records, args.nix_hash)
 record("relocated-ownership-idempotent")
+failed = False
+
+
+def failing_uninstall(src, dst):
+    global failed
+    if Path(src) == state and not failed:
+        failed = True
+        raise OSError("injected uninstall state move failure after cache move")
+    return original_replace(src, dst)
+
+
+with patch.object(install.os, "replace", failing_uninstall):
+    rejects("uninstall-rollback", lambda: install.uninstall(root, args.nix_hash))
+assert failed
+artifact = root / ".build/debug/user-artifact"
+artifact.parent.mkdir()
+artifact.write_text("keep build outputs")
+install.uninstall(root, args.nix_hash)
+assert not (root / "Packages").exists() and not state.exists()
+assert artifact.read_text() == "keep build outputs"
+record("uninstall-preserves-other-build-outputs")
+install.install(root, records, args.nix_hash)
+record("reinstall-after-uninstall")
 unowned = output / "unowned-project"
 unowned.mkdir()
 (unowned / "Packages").mkdir()

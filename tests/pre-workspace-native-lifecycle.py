@@ -146,6 +146,17 @@ def main():
         )
     )
     cli = str(Path(built[0]["outputs"]["out"]) / "bin/swiftpm-purifier")
+    closure = (
+        run("local-cli-closure", ["nix-store", "-qR", built[0]["outputs"]["out"]])
+        .decode()
+        .splitlines()
+    )
+    assert str(runtime) not in closure
+    assert not any(
+        re.search(r"-(?:swift|swiftpm|original-swift-sdk)-[0-9]", path)
+        for path in closure
+    )
+    receipt["localCLIClosure"] = closure
 
     def write(path, text):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -181,16 +192,16 @@ def main():
         chunks = []
         offset = 0
         while offset < len(raw):
-            if raw[offset:offset+4] == b"PACK":
+            if raw[offset : offset + 4] == b"PACK":
                 chunks.append(raw[offset:])
                 break
-            length = int(raw[offset:offset+4], 16)
+            length = int(raw[offset : offset + 4], 16)
             offset += 4
             if length <= 2:
                 continue
             assert length >= 4 and offset + length - 4 <= len(raw)
-            payload = raw[offset:offset+length-4]
-            offset += length-4
+            payload = raw[offset : offset + length - 4]
+            offset += length - 4
             if payload[:1] == b"\x01":
                 chunks.append(payload[1:])
         pack = b"".join(chunks)
@@ -206,34 +217,71 @@ def main():
 
         def backend(self):
             import urllib.parse
-            event = {"method": self.command, "path": self.path,
+
+            event = {
+                "method": self.command,
+                "path": self.path,
                 "phase": receipt.get("activeCommand"),
-                "startedMonotonicNs": time.monotonic_ns(), "bodyComplete": False}
+                "startedMonotonicNs": time.monotonic_ns(),
+                "bodyComplete": False,
+            }
             parsed = urllib.parse.urlsplit(self.path)
             length = int(self.headers.get("Content-Length", "0"))
-            assert 0 <= length <= 1024*1024
+            assert 0 <= length <= 1024 * 1024
             request = self.rfile.read(length)
             assert len(request) == length
-            result = bounded_native.run(["git", "http-backend"], input=request,
-                env=dict(env, GIT_PROJECT_ROOT=str(work / "remote"), GIT_HTTP_EXPORT_ALL="1",
-                    PATH_INFO=parsed.path, QUERY_STRING=parsed.query, REQUEST_METHOD=self.command,
-                    CONTENT_TYPE=self.headers.get("Content-Type", ""), CONTENT_LENGTH=str(length),
-                    REMOTE_ADDR="127.0.0.1"), timeout=30, output_limit=16*1024*1024)
+            result = bounded_native.run(
+                ["git", "http-backend"],
+                input=request,
+                env=dict(
+                    env,
+                    GIT_PROJECT_ROOT=str(work / "remote"),
+                    GIT_HTTP_EXPORT_ALL="1",
+                    PATH_INFO=parsed.path,
+                    QUERY_STRING=parsed.query,
+                    REQUEST_METHOD=self.command,
+                    CONTENT_TYPE=self.headers.get("Content-Type", ""),
+                    CONTENT_LENGTH=str(length),
+                    REMOTE_ADDR="127.0.0.1",
+                ),
+                timeout=30,
+                output_limit=16 * 1024 * 1024,
+            )
             assert result.returncode == 0
             headers, body = result.stdout.split(b"\r\n\r\n", 1)
             pairs = [line.decode().split(":", 1) for line in headers.split(b"\r\n")]
-            status = next((int(value.strip().split()[0]) for key, value in pairs if key.lower() == "status"), 200)
+            status = next(
+                (
+                    int(value.strip().split()[0])
+                    for key, value in pairs
+                    if key.lower() == "status"
+                ),
+                200,
+            )
             index = uuid.uuid4().hex
             body_file = work / "http-bodies" / (index + ".body")
             body_file.write_bytes(body)
-            event.update(status=status, bytes=len(body), expectedBytes=len(body),
-                bodySha256=hashlib.sha256(body).hexdigest(), bodyFile=str(body_file.relative_to(work)))
-            if self.command == "POST" and parsed.path.endswith("/git-upload-pack") and status == 200:
+            event.update(
+                status=status,
+                bytes=len(body),
+                expectedBytes=len(body),
+                bodySha256=hashlib.sha256(body).hexdigest(),
+                bodyFile=str(body_file.relative_to(work)),
+            )
+            if (
+                self.command == "POST"
+                and parsed.path.endswith("/git-upload-pack")
+                and status == 200
+            ):
                 pack = unpack_response(body)
                 if pack is not None:
                     pack_file = work / "http-bodies" / (index + ".pack")
                     pack_file.write_bytes(pack)
-                    event.update(packFile=str(pack_file.relative_to(work)), packSha256=hashlib.sha256(pack).hexdigest(), packBytes=len(pack))
+                    event.update(
+                        packFile=str(pack_file.relative_to(work)),
+                        packSha256=hashlib.sha256(pack).hexdigest(),
+                        packBytes=len(pack),
+                    )
             self.send_response(status)
             for key, value in pairs:
                 if key.lower() not in ("status", "content-length"):
@@ -291,8 +339,14 @@ def main():
             [str(runtime / "bin/swift-package"), "fetch"],
             project,
         )
-        assert not (project / "Package.pins").exists() and not (project / "Package.resolved").exists()
-        assert not any((project / ".build" / name).exists() for name in ("workspace-state.json", "dependencies-state.json"))
+        assert (
+            not (project / "Package.pins").exists()
+            and not (project / "Package.resolved").exists()
+        )
+        assert not any(
+            (project / ".build" / name).exists()
+            for name in ("workspace-state.json", "dependencies-state.json")
+        )
         baseline = inputs(project)
         receipt["inputsBeforeCapture"] = baseline
         shutil.copytree(
@@ -314,7 +368,9 @@ def main():
         # Existing native Packages is deliberately unowned. Replay into a
         # fresh project rather than silently overwrite the developer cache.
         replay = work / "replay"
-        shutil.copytree(project, replay, ignore=shutil.ignore_patterns("Packages", ".build"))
+        shutil.copytree(
+            project, replay, ignore=shutil.ignore_patterns("Packages", ".build")
+        )
         project = replay
         run("cold-prefetch", [cli, "prefetch"], project)
         command = receipt["commands"][-1]
