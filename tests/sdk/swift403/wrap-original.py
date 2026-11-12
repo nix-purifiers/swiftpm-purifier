@@ -230,8 +230,28 @@ for tool in sorted(binary.iterdir()):
         "export CPATH=" + shlex.quote(headers) + "\n"
     )
     arguments = clang_arguments if tool.name == "clang-10" else []
+    header_search = ""
+    if tool.name == "swift":
+        header_search = (
+            'case "${0##*/}:${1-}" in swiftc:*|swift:-frontend) set -- "$@" '
+            + " ".join(
+                map(
+                    shlex.quote,
+                    [
+                        "-Xcc",
+                        "-nostdinc",
+                        "-Xcc",
+                        "-isystem",
+                        "-Xcc",
+                        str(root / "lib/swift/clang/include"),
+                    ],
+                )
+            )
+            + " ;; esac\n"
+        )
     tool.write_text(
         prefix
+        + header_search
         + 'exec -a "$0" '
         + shlex.quote(str(raw))
         + " "
