@@ -62,7 +62,7 @@ def main():
     for name in ["LD_PRELOAD", "LD_LIBRARY_PATH", "CPATH", "LIBRARY_PATH"]:
         env.pop(name, None)
 
-    def run(label, command, cwd=work, timeout=240):
+    def run(label, command, cwd=work, timeout=240, rejection=None):
         row = {"label": label}
         receipt["commands"].append(row)
         result = bounded.run_recorded(
@@ -75,11 +75,32 @@ def main():
             timeout=timeout,
             output_limit=16 * 1024 * 1024,
         )
-        if result.returncode:
+        if rejection is not None:
+            if result.returncode == 0 or rejection not in result.stderr:
+                raise RuntimeError(label + " did not reject the conflicting SDK")
+        elif result.returncode:
             raise RuntimeError(
                 label + " failed: " + result.stderr.decode(errors="replace")[-3000:]
             )
         return result.stdout
+
+    receipt["sourceRevision"] = (
+        run("source-revision", ["git", "rev-parse", "HEAD"], root).decode().strip()
+    )
+    receipt["sourceStatus"] = run(
+        "source-status", ["git", "status", "--porcelain=v1"], root
+    ).decode()
+    names = run("source-files", ["git", "ls-files", "-z"], root).decode().split("\0")
+    receipt["sourceFiles"] = {
+        name: hashlib.sha256(
+            os.readlink(root / name).encode()
+            if (root / name).is_symlink()
+            else (root / name).read_bytes()
+        ).hexdigest()
+        for name in names
+        if name
+    }
+    save()
 
     def write(path, text):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -260,6 +281,30 @@ def main():
         ["nix", "build", "--impure", "--no-link", "--json", "--expr", expression],
         timeout=900,
     )
+    env["NATIVE_CONFLICTING_COMPILER"] = sdk["descriptor"]["executables"]["package"]
+    for variable in [
+        "SWIFT_EXEC_MANIFEST",
+        "_SWIFT_EXEC_MANIFEST",
+        "SWIFT_DRIVER_SWIFT_FRONTEND_EXEC",
+    ]:
+        run(
+            "sandbox-reject-" + variable.lower(),
+            [
+                "nix",
+                "build",
+                "--impure",
+                "--no-link",
+                "--print-build-logs",
+                "--expr",
+                "("
+                + expression
+                + ").overrideAttrs { "
+                + variable
+                + ' = builtins.getEnv "NATIVE_CONFLICTING_COMPILER"; }',
+            ],
+            timeout=180,
+            rejection=b"native compiler override disagrees",
+        )
     relocated = work / "relocated"
     shutil.move(project, relocated)
     assert not project.exists()

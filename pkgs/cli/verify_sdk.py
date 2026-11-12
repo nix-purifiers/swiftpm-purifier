@@ -22,6 +22,7 @@ def main():
         raise native_sdk.SDKError(
             "selected SDK derivations/environment differ from the lock"
         )
+    native_sdk.check_build_bindings(descriptor)
     paths = args.closure_paths.read_text().splitlines()
     actual = native_sdk.measure(
         descriptor,

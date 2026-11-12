@@ -197,6 +197,12 @@ def check_bindings(descriptor):
     for role, name in names.items():
         if os.environ.get(name) != descriptor["executables"][role]:
             raise SDKError("active native command differs from selected SDK: " + role)
+    check_compiler_overrides(descriptor)
+
+
+def check_compiler_overrides(descriptor):
+    """Shared native guard, independent of CLI-only role variables."""
+    validate_descriptor(descriptor)
     for name, expected in [
         ("SWIFT_EXEC_MANIFEST", descriptor["executables"]["swiftc"]),
         ("_SWIFT_EXEC_MANIFEST", descriptor["executables"]["swiftc"]),
@@ -210,6 +216,23 @@ def check_bindings(descriptor):
             raise SDKError(
                 "native compiler override disagrees with selected SDK: " + name
             )
+
+
+def check_build_bindings(descriptor):
+    """Check the native commands an ordinary SwiftPM build hook will invoke."""
+    check_compiler_overrides(descriptor)
+    compiler = os.environ.get("SWIFT_EXEC")
+    if (
+        not compiler
+        or Path(compiler).resolve()
+        != Path(descriptor["executables"]["swiftc"]).resolve()
+    ):
+        raise SDKError("build compiler differs from selected SDK")
+    for role, expected in descriptor["executables"].items():
+        name = role if role in ("swift", "swiftc") else "swift-" + role
+        actual = shutil.which(name)
+        if actual is None or Path(actual).resolve() != Path(expected).resolve():
+            raise SDKError("build PATH selects a different native command: " + name)
 
 
 def check_active(identity):
@@ -229,6 +252,7 @@ def measure(
     descriptor, nix, options, verify_active=True, evidence=None, closure_paths=None
 ):
     validate_descriptor(descriptor)
+    check_compiler_overrides(descriptor)
     temporary = (
         Path(evidence)
         if evidence is not None
