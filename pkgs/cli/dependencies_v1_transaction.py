@@ -38,6 +38,12 @@ FIELDS = {
 }
 
 
+class ForeignControl(cache.Reject):
+    """A detected control change must not be adopted by automatic recovery."""
+
+    pass
+
+
 def need(value, message):
     cache.require(value, message)
 
@@ -194,6 +200,7 @@ class Transaction:
         self.key = digest(["root", self.root_id])
         self.reservation = self.registry / (self.key + ".json")
         self.pending = self.registry / (self.key + ".pending")
+        self.hold = self.registry / (self.key + ".hold")
         locked_paths = {path for path in self.paths if path is not None}
         locked_paths.update(
             (self.root / "Package.resolved", self.root / "swiftpm-purifier.lock.json")
@@ -370,8 +377,65 @@ class Transaction:
                             "changed transaction staging mode",
                         )
 
-    def cleanup(self, record, callback=None):
+    def foreign_control(self, record):
         self.check()
+        error = ForeignControl(
+            "Transaction controls changed; foreign data retained. Recovery hold: "
+            + str(self.hold)
+        )
+        if not os.path.lexists(self.hold):
+            try:
+                write(
+                    self.hold,
+                    canonical(
+                        {
+                            "version": 1,
+                            "protocol": "dependencies-state-v1",
+                            "rootIdentity": self.root_id,
+                            "nonce": record["nonce"],
+                            "expectedReservationSHA256": hashlib.sha256(
+                                canonical(record)
+                            ).hexdigest(),
+                        }
+                    ),
+                )
+                sync(self.registry)
+            except OSError as hold_error:
+                error.add_note("Could not persist recovery hold: " + str(hold_error))
+        raise error
+
+    def guard_control(self, record, phase):
+        self.check()
+        expected = None if phase is None else canonical(self.journal(record, phase))
+        try:
+            valid = (
+                read(self.reservation, control=True) == canonical(record)
+                and read(self.root / JOURNAL, control=True) == expected
+                and not os.path.lexists(self.pending)
+                and not os.path.lexists(self.hold)
+            )
+        except (ValueError, OSError):
+            self.foreign_control(record)
+        if not valid:
+            self.foreign_control(record)
+
+    def guard_pending(self, record):
+        self.check()
+        try:
+            valid = (
+                read(self.pending, control=True) == canonical(record)
+                and not os.path.lexists(self.reservation)
+                and not os.path.lexists(self.root / JOURNAL)
+                and not os.path.lexists(self.hold)
+                and not any(os.path.lexists(stage) for stage in self.stages(record))
+            )
+        except (ValueError, OSError):
+            self.foreign_control(record)
+        if not valid:
+            self.foreign_control(record)
+
+    def cleanup(self, record, callback=None, phase=None):
+        self.guard_control(record, phase)
         self.stage_contents(record)
         current = self.pair()
         modes = self.modes()
@@ -383,25 +447,13 @@ class Transaction:
             ),
             "cleanup requires complete known output pair",
         )
-        journal = read(self.root / JOURNAL, control=True)
-        reservation = read(self.reservation, control=True)
-        need(
-            reservation is not None and cache.decode(reservation) == record,
-            "cleanup reservation changed",
-        )
 
         def guard():
-            self.check()
+            self.guard_control(record, phase)
             self.stage_contents(record)
             need(
                 self.pair() == current and self.modes() == modes,
                 "outputs changed during cleanup",
-            )
-            need(
-                read(self.root / JOURNAL, control=True) == journal
-                and read(self.reservation, control=True) == reservation
-                and not os.path.lexists(self.pending),
-                "control record changed during cleanup",
             )
 
         for index, stage in enumerate(self.stages(record)):
@@ -421,21 +473,21 @@ class Transaction:
         (self.root / JOURNAL).unlink(missing_ok=True)
         sync(self.root)
         fault(callback, "cleanup-journal-removed")
-        self.check()
+        self.guard_control(record, None)
         need(
-            self.pair() == current
-            and self.modes() == modes
-            and read(self.reservation, control=True) == reservation
-            and not os.path.lexists(self.pending)
-            and not os.path.lexists(self.root / JOURNAL),
-            "outputs or reservation changed before cleanup completion",
+            self.pair() == current and self.modes() == modes,
+            "outputs changed before cleanup completion",
         )
-        self.reservation.unlink(missing_ok=True)
+        self.reservation.unlink()
         sync(self.registry)
         fault(callback, "cleanup-reservation-removed")
 
     def recover(self, callback=None):
         self.check()
+        need(
+            not os.path.lexists(self.hold),
+            "foreign-control recovery hold requires inspection: " + str(self.hold),
+        )
         raw = read(self.reservation, control=True)
         pending = read(self.pending, control=True)
         if raw is None:
@@ -451,6 +503,7 @@ class Transaction:
                     and not os.path.lexists(self.root / JOURNAL),
                     "unreserved project staging",
                 )
+                self.guard_pending(record)
                 self.pending.unlink()
                 sync(self.registry)
                 return "aborted-before-reservation"
@@ -469,7 +522,8 @@ class Transaction:
             )
             return "clean"
         record = self.validate(cache.decode(raw))
-        need(pending is None, "concurrent pending reservation")
+        if raw != canonical(record) or pending is not None:
+            self.foreign_control(record)
         self.stage_contents(record)
         original, target = [list(map(decoded, record[name])) for name in ("old", "new")]
         current = self.pair()
@@ -497,6 +551,7 @@ class Transaction:
             and journal["phase"] in ("PREPARED", "COMMITTED"),
             "closed bound transaction journal",
         )
+        self.guard_control(record, journal["phase"])
         for index, (raw, mode) in enumerate(zip(current, modes)):
             need(
                 (raw, mode)
@@ -511,15 +566,17 @@ class Transaction:
                 current == target and modes == record["newModes"],
                 "committed outputs changed",
             )
-            self.cleanup(record, callback)
+            self.cleanup(record, callback, phase="COMMITTED")
             return "committed-cleanup"
         if current == original and modes == record["oldModes"]:
-            self.cleanup(record, callback)
+            self.cleanup(record, callback, phase="PREPARED")
             return "restored-old-pair"
         for index, (path, raw) in enumerate(zip(self.paths, original)):
             if path is None:
                 continue
             self.check()
+            self.guard_control(record, "PREPARED")
+            self.stage_contents(record)
             need(
                 self.pair() == original[:index] + current[index:]
                 and self.modes() == record["oldModes"][:index] + modes[index:],
@@ -534,15 +591,18 @@ class Transaction:
                 else:
                     write(temporary, raw, record["oldModes"][index])
                 fault(callback, "restore-" + str(index) + "-staged")
+                self.guard_control(record, "PREPARED")
+                self.stage_contents(record)
                 os.replace(temporary, path)
             fault(callback, "restore-" + str(index) + "-renamed")
+            self.guard_control(record, "PREPARED")
             sync(path.parent)
             fault(callback, "restore-" + str(index) + "-directory-fsync")
         need(
             self.pair() == original and self.modes() == record["oldModes"],
             "restored output verification",
         )
-        self.cleanup(record, callback)
+        self.cleanup(record, callback, phase="PREPARED")
         return "restored-old-pair"
 
     def publish(self, target, expected, callback=None):
@@ -595,18 +655,21 @@ class Transaction:
         try:
             write(self.pending, canonical(record))
             fault(callback, "reservation-file-fsync")
+            self.guard_pending(record)
             os.replace(self.pending, self.reservation)
             fault(callback, "reservation-renamed")
+            self.guard_control(record, None)
             sync(self.registry)
             fault(callback, "reservation-directory-fsync")
             for index, (parent_id, stage) in enumerate(
                 zip(self.parent_ids, self.stages(record))
             ):
-                self.check()
+                self.guard_control(record, None)
                 stage.mkdir(mode=0o700)
                 fault(callback, "stage-" + str(index) + "-created")
                 sync(stage.parent)
                 fault(callback, "stage-" + str(index) + "-directory-fsync")
+                self.guard_control(record, None)
                 write(
                     stage / "owner.json",
                     canonical(
@@ -619,6 +682,7 @@ class Transaction:
                 )
                 fault(callback, "stage-" + str(index) + "-owner-written")
             for index, (path, raw) in enumerate(zip(self.paths, target)):
+                self.guard_control(record, None)
                 if raw is not None:
                     write(
                         self.stage_for(record, index) / ("new-" + str(index)),
@@ -629,14 +693,16 @@ class Transaction:
             for stage in self.stages(record):
                 sync(stage)
             temporary = self.stages(record)[0] / "journal.pending"
+            self.guard_control(record, None)
             write(temporary, canonical(self.journal(record, "PREPARED")))
             fault(callback, "journal-file-fsync")
+            self.guard_control(record, None)
             os.replace(temporary, self.root / JOURNAL)
             fault(callback, "journal-renamed")
             sync(self.root)
             fault(callback, "journal-directory-fsync")
             for index, (path, raw) in enumerate(zip(self.paths, target)):
-                self.check()
+                self.guard_control(record, "PREPARED")
                 self.stage_contents(record)
                 need(
                     self.pair() == target[:index] + expected[index:]
@@ -651,19 +717,25 @@ class Transaction:
                             self.stage_for(record, index) / ("new-" + str(index)), path
                         )
                     fault(callback, "output-" + str(index) + "-renamed")
+                    self.guard_control(record, "PREPARED")
                     sync(path.parent)
                     fault(callback, "output-" + str(index) + "-directory-fsync")
             need(
                 self.pair() == target and self.modes() == new_modes,
                 "published pair verification",
             )
+            self.guard_control(record, "PREPARED")
             write(temporary, canonical(self.journal(record, "COMMITTED")))
             fault(callback, "commit-file-fsync")
+            self.guard_control(record, "PREPARED")
             os.replace(temporary, self.root / JOURNAL)
             fault(callback, "commit-renamed")
+            self.guard_control(record, "COMMITTED")
             sync(self.root)
             fault(callback, "commit-directory-fsync")
-            self.cleanup(record, callback)
+            self.cleanup(record, callback, phase="COMMITTED")
+        except ForeignControl:
+            raise
         except Exception as error:
             try:
                 self.recover()

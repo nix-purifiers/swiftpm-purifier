@@ -3,6 +3,8 @@
 
 from pathlib import Path
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -95,6 +97,129 @@ class Transaction(unittest.TestCase):
                 with second.locked():
                     self.fail("overlapping operation acquired locks")
         self.assertEqual(external.read_bytes(), b"shared")
+
+    def control_fixture(self):
+        base = Path(tempfile.mkdtemp(dir=self.base)).resolve()
+        root = base / "root"
+        root.mkdir()
+        registry = base / "registry"
+        registry.mkdir(mode=0o700)
+        (root / "Package.resolved").write_bytes(b"old pin")
+        (root / "swiftpm-purifier.lock.json").write_bytes(b"old lock")
+        return transaction.Transaction(root, registry)
+
+    def test_foreign_controls_between_publication_boundaries_are_retained(self):
+        for point, control in [
+            ("reservation-file-fsync", "pending"),
+            ("reservation-file-fsync", "reservation"),
+            ("journal-file-fsync", "journal"),
+            ("output-0-renamed", "journal"),
+            ("output-0-renamed", "reservation"),
+            ("output-0-renamed", "pending"),
+            ("commit-file-fsync", "journal"),
+            ("commit-renamed", "journal"),
+        ]:
+            with self.subTest(point=point, control=control):
+                service = self.control_fixture()
+                path = (
+                    service.root / transaction.JOURNAL
+                    if control == "journal"
+                    else getattr(service, control)
+                )
+                foreign = b"foreign control evidence"
+
+                def change(label):
+                    if label == point:
+                        path.write_bytes(foreign)
+
+                with service.locked():
+                    with self.assertRaises(transaction.ForeignControl):
+                        service.publish(
+                            [b"new pin", b"new lock"], service.pair(), change
+                        )
+                    self.assertEqual(path.read_bytes(), foreign)
+                    self.assertTrue(service.hold.exists())
+                    if point == "output-0-renamed":
+                        self.assertEqual(service.pair(), [b"new pin", b"old lock"])
+                    with self.assertRaises(cache.Reject):
+                        service.recover()
+                    self.assertEqual(path.read_bytes(), foreign)
+                child_code = (
+                    "import sys;from pathlib import Path;sys.path.insert(0,sys.argv[1]);"
+                    "from dependencies_v1_transaction import Transaction;"
+                    "t=Transaction(Path(sys.argv[2]),Path(sys.argv[3]));\n"
+                    "try:\n with t.locked():t.recover()\n"
+                    "except ValueError:sys.exit(3)\n"
+                )
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        "-c",
+                        child_code,
+                        str(Path(transaction.__file__).parent),
+                        str(service.root),
+                        str(service.registry),
+                    ],
+                    capture_output=True,
+                    timeout=5,
+                )
+                self.assertEqual(result.returncode, 3, result.stderr)
+                self.assertEqual(path.read_bytes(), foreign)
+
+    def test_canonical_foreign_phase_change_is_not_adopted_by_recovery(self):
+        service = self.control_fixture()
+        foreign = None
+
+        def change(label):
+            nonlocal foreign
+            if label == "commit-file-fsync":
+                record = cache.decode((service.root / transaction.JOURNAL).read_bytes())
+                record["phase"] = "COMMITTED"
+                foreign = transaction.canonical(record)
+                (service.root / transaction.JOURNAL).write_bytes(foreign)
+
+        with service.locked():
+            with self.assertRaises(transaction.ForeignControl):
+                service.publish([b"new pin", b"new lock"], service.pair(), change)
+            self.assertEqual((service.root / transaction.JOURNAL).read_bytes(), foreign)
+            with self.assertRaises(cache.Reject):
+                service.recover()
+            self.assertEqual((service.root / transaction.JOURNAL).read_bytes(), foreign)
+
+    def test_control_changes_stop_rollback_before_next_output(self):
+        class Interrupted(BaseException):
+            pass
+
+        for control in ("journal", "reservation", "pending"):
+            with self.subTest(control=control):
+                service = self.control_fixture()
+
+                def stop(label):
+                    if label == "output-1-renamed":
+                        raise Interrupted()
+
+                with service.locked():
+                    with self.assertRaises(Interrupted):
+                        service.publish([b"new pin", b"new lock"], service.pair(), stop)
+                path = (
+                    service.root / transaction.JOURNAL
+                    if control == "journal"
+                    else getattr(service, control)
+                )
+                foreign = b"foreign during rollback"
+
+                def change(label):
+                    if label == "restore-0-renamed":
+                        path.write_bytes(foreign)
+
+                with service.locked():
+                    with self.assertRaises(transaction.ForeignControl):
+                        service.recover(change)
+                    self.assertEqual(service.pair(), [b"old pin", b"new lock"])
+                    self.assertEqual(path.read_bytes(), foreign)
+                    with self.assertRaises(cache.Reject):
+                        service.recover()
+                    self.assertEqual(path.read_bytes(), foreign)
 
     def test_stale_input_does_not_begin_transaction(self):
         service = transaction.Transaction(self.root, self.registry)
