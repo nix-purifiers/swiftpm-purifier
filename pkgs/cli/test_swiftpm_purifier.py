@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: MIT
 import hashlib
 import copy
+import os
+import sys
+import time
 import json
 import shutil
 import tempfile
@@ -9,6 +12,73 @@ from pathlib import Path
 from unittest import mock
 
 import swiftpm_purifier as sp
+
+
+class NativeProtocolBoundaries(unittest.TestCase):
+    def native(self, script, **options):
+        return sp.bounded_native.run(
+            [sys.executable, "-c", script],
+            protocol_fd_flag="--protocol-fd",
+            timeout=1,
+            **options,
+        )
+
+    def test_protocol_is_separate_and_status_is_preserved(self):
+        result = self.native(
+            "import os,sys; fd=int(sys.argv[-1]); "
+            "os.write(1,b'noise'); os.write(2,b'diagnostic'); "
+            "os.write(fd,b'{\"answer\":42}'); sys.exit(17)"
+        )
+        self.assertEqual(result.returncode, 17)
+        self.assertEqual(result.stdout, b"noise")
+        self.assertEqual(result.stderr, b"diagnostic")
+        self.assertEqual(json.loads(result.protocol), {"answer": 42})
+        self.assertEqual(result.args[-2], "--protocol-fd")
+
+    def test_protocol_shares_combined_output_bound(self):
+        with self.assertRaisesRegex(ValueError, "output bound") as caught:
+            self.native(
+                "import os,sys; os.write(1,b'1234'); os.write(int(sys.argv[-1]),b'56789')",
+                output_limit=8,
+            )
+        self.assertGreater(
+            len(caught.exception.stdout) + len(caught.exception.protocol), 8
+        )
+
+    def test_descendant_holding_only_protocol_pipe_hits_deadline(self):
+        started = time.monotonic()
+        with self.assertRaisesRegex(TimeoutError, "deadline") as caught:
+            self.native(
+                "import os,sys,time; fd=int(sys.argv[-1]); pid=os.fork(); "
+                "os.write(fd,b'partial') if pid else None; "
+                "os._exit(0) if pid else None; "
+                "os.close(1); os.close(2); time.sleep(30)"
+            )
+        self.assertEqual(caught.exception.protocol, b"partial")
+        self.assertLess(time.monotonic() - started, 5)
+
+    def test_closed_pipes_do_not_hide_live_parent(self):
+        with self.assertRaisesRegex(TimeoutError, "deadline"):
+            self.native(
+                "import os,sys,time; os.close(1); os.close(2); os.close(int(sys.argv[-1])); time.sleep(30)"
+            )
+
+    def test_existing_two_stream_call(self):
+        result = sp.bounded_native.run(
+            [sys.executable, "-c", "print('unchanged')"], timeout=1
+        )
+        self.assertEqual(result.stdout, b"unchanged\n")
+        self.assertEqual(result.stderr, b"")
+        self.assertEqual(result.protocol, b"")
+
+    @unittest.skipUnless(Path("/proc/self/fd").is_dir(), "Linux descriptor accounting")
+    def test_failed_spawn_closes_protocol_descriptors(self):
+        before = set(os.listdir("/proc/self/fd"))
+        with self.assertRaises(FileNotFoundError):
+            sp.bounded_native.run(
+                ["/nonexistent/purifier-protocol-command"], protocol_fd_flag="-fileno"
+            )
+        self.assertEqual(set(os.listdir("/proc/self/fd")), before)
 
 
 def pin(identity, location, kind="remoteSourceControl"):
