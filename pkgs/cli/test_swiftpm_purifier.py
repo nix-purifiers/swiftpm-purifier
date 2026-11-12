@@ -2,6 +2,7 @@
 import hashlib
 import copy
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -36,6 +37,56 @@ def checkout(identity, location, kind="remoteSourceControl", name=None):
         },
         "subpath": identity,
     }
+
+
+class LegacyLocalState(unittest.TestCase):
+    fixture = Path(__file__).parent / "fixtures/native424"
+
+    def test_actual_native_local_metadata_is_current(self):
+        self.assertTrue(
+            sp.is_current(
+                self.fixture, json.loads((self.fixture / sp.LOCK_NAME).read_text())
+            )
+        )
+
+    def test_escape_or_unknown_local_protocol_is_rejected(self):
+        original = json.loads((self.fixture / sp.LOCK_NAME).read_text())
+        for field, value in (
+            ("path", "@root@/../Local"),
+            ("path", "@root@/Missing"),
+            ("isLocal", False),
+            ("identity", "leaf"),
+            ("name", "LegacyLeaf"),
+        ):
+            with self.subTest(field=field, value=value):
+                lock = copy.deepcopy(original)
+                lock["localDependencies"][0]["packageRef"][field] = value
+                with self.assertRaises(sp.PurifierError):
+                    sp.is_current(self.fixture, lock)
+
+    def test_actual_symlink_and_directory_manifests_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            outside = base / "outside"
+            shutil.copytree(self.fixture / "Local", outside)
+            for kind in ("directory-link", "manifest-link", "directory-manifest"):
+                with self.subTest(kind=kind):
+                    root = base / kind
+                    shutil.copytree(self.fixture, root)
+                    manifest = root / "Local/Package.swift"
+                    if kind == "directory-link":
+                        shutil.rmtree(root / "Local")
+                        (root / "Local").symlink_to(outside, target_is_directory=True)
+                    elif kind == "manifest-link":
+                        manifest.unlink()
+                        manifest.symlink_to(outside / "Package.swift")
+                    else:
+                        manifest.unlink()
+                        manifest.mkdir()
+                    with self.assertRaises(sp.PurifierError):
+                        sp.is_current(
+                            root, json.loads((root / sp.LOCK_NAME).read_text())
+                        )
 
 
 class ManifestHash(unittest.TestCase):

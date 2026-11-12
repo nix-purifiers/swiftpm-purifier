@@ -102,7 +102,7 @@ let
       ln -sfn "$(readlink ${tree}/$entry)" "$entry"
     done
     mkdir -p .build
-    substitute ${tree}/workspace-state.json.in .build/workspace-state.json --subst-var-by root "$PWD"
+    substitute ${tree}/workspace-state.json.in .build/${read.workspaceStateFile} --subst-var-by root "$PWD"
   '';
 
   extraArgs = builtins.removeAttrs args [

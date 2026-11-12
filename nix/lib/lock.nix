@@ -177,6 +177,81 @@ let
     builtins.sort builtins.lessThan (map (pin: pin.identity) resolvedPins)
     == builtins.attrNames lock.pins;
 
+  uniqueStrings =
+    values:
+    builtins.length (
+      builtins.attrNames (
+        builtins.listToAttrs (
+          map (name: {
+            inherit name;
+            value = true;
+          }) values
+        )
+      )
+    ) == builtins.length values;
+  legacyNames =
+    map (identity: lock.pins.${identity}.name) (builtins.attrNames lock.pins)
+    ++ map (dependency: dependency.packageRef.name) lock.localDependencies;
+  legacyIdentities =
+    builtins.attrNames lock.pins
+    ++ map (dependency: dependency.packageRef.identity) lock.localDependencies;
+
+  legacyLocalValid =
+    dependency:
+    let
+      ref = dependency.packageRef or { };
+      matched =
+        if builtins.isString (ref.path or null) then builtins.match "@root@/(.+)" ref.path else null;
+      relative = if matched == null then "" else builtins.head matched;
+      components = builtins.filter builtins.isString (builtins.split "/" relative);
+      directory =
+        builtins.foldl'
+          (
+            current: part:
+            let
+              entries = if current.valid then builtins.readDir current.path else { };
+            in
+            {
+              path = current.path + "/${part}";
+              valid = current.valid && (entries.${part} or null) == "directory";
+            }
+          )
+          {
+            path = src;
+            valid = true;
+          }
+          components;
+    in
+    builtins.isAttrs dependency
+    &&
+      builtins.attrNames dependency == [
+        "basedOn"
+        "packageRef"
+        "state"
+        "subpath"
+      ]
+    && dependency.basedOn == null
+    && dependency.state == { name = "local"; }
+    && builtins.isAttrs ref
+    &&
+      builtins.attrNames ref == [
+        "identity"
+        "isLocal"
+        "name"
+        "path"
+      ]
+    && ref.isLocal == true
+    && builtins.isString ref.identity
+    && ref.identity != ""
+    && builtins.isString ref.name
+    && ref.name != ""
+    && dependency.subpath == ref.identity
+    && matched != null
+    && builtins.all (part: part != "" && part != "." && part != "..") components
+    && directory.valid
+    && ((builtins.readDir directory.path)."Package.swift" or null) == "regular"
+    && builtins.isString (builtins.readFile (directory.path + "/Package.swift"));
+
   # The first problem in the order the checks depend on each other: a later
   # check reads what an earlier one verified.
   problem =
@@ -199,6 +274,24 @@ let
       "swiftpm-purifier: ${toString lockFile} does not match its contentHash, so it was changed after the lock run wrote it. ${relock}"
     else if lock.version == supportedVersion && sdkContract.problem != null then
       "swiftpm-purifier: ${sdkContract.problem}. ${relock}"
+    else if
+      lock.workspaceStateVersion == 2
+      && (
+        (builtins.pathExists resolvedFile && (resolved.version or null) != 1)
+        || !(builtins.all legacyLocalValid lock.localDependencies)
+        || lock.binaryTargets != [ ]
+        || !(builtins.all (
+          identity:
+          let
+            name = lock.pins.${identity}.name or null;
+          in
+          builtins.isString name && builtins.match "[A-Za-z0-9_][A-Za-z0-9_.-]*" name != null
+        ) (builtins.attrNames lock.pins))
+        || !uniqueStrings legacyNames
+        || !uniqueStrings legacyIdentities
+      )
+    then
+      "swiftpm-purifier: unsupported or unsafe dependency-state format-2 lock. ${relock}"
     else if lock.manifestHash != manifestHash then
       "swiftpm-purifier: ${toString lockFile} is out of date with Package.swift in ${toString src}. Run `swiftpm-purifier lock`."
     else if
@@ -238,11 +331,21 @@ let
       in
       if unsuffixed == null then base else builtins.head unsuffixed;
 
-  packageRefOf = pin: {
-    inherit (pin) identity kind;
-    location = if isRegistry pin then pin.identity else pin.location;
-    inherit (lock.pins.${pin.identity}) name;
-  };
+  packageRefOf =
+    pin:
+    if lock.workspaceStateVersion == 2 then
+      {
+        inherit (pin) identity;
+        isLocal = false;
+        path = pin.location;
+        inherit (lock.pins.${pin.identity}) name;
+      }
+    else
+      {
+        inherit (pin) identity kind;
+        location = if isRegistry pin then pin.identity else pin.location;
+        inherit (lock.pins.${pin.identity}) name;
+      };
 
   checkoutStateOf =
     pin:
@@ -266,7 +369,7 @@ let
   recordOf =
     pin:
     let
-      subpath = subpathOf pin;
+      subpath = if lock.workspaceStateVersion == 2 then lock.pins.${pin.identity}.name else subpathOf pin;
       packageRef = packageRefOf pin;
     in
     {
@@ -288,7 +391,7 @@ let
       locked = lock.pins.${pin.identity};
     in
     {
-      path = "Packages/${subpathOf pin}";
+      path = "Packages/${if lock.workspaceStateVersion == 2 then locked.name else subpathOf pin}";
       inherit (locked) hash;
     }
     // (
@@ -385,15 +488,19 @@ in
 
   workspaceState = {
     object = {
-      artifacts = lock.binaryTargets;
       dependencies = lock.localDependencies ++ map recordOf resolvedPins;
     }
+    // (if lock.workspaceStateVersion == 2 then { } else { artifacts = lock.binaryTargets; })
     // (
-      if lock.workspaceStateVersion == 7 || (resolved.version or null) != 1 then
+      if lock.workspaceStateVersion == 2 then
+        { }
+      else if lock.workspaceStateVersion == 7 || (resolved.version or null) != 1 then
         { prebuilts = [ ]; }
       else
         { }
     );
     version = lock.workspaceStateVersion;
   };
+  workspaceStateFile =
+    if lock.workspaceStateVersion == 2 then "dependencies-state.json" else "workspace-state.json";
 }
