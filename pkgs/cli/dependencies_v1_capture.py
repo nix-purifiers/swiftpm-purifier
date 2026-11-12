@@ -4,7 +4,6 @@
 import hashlib
 import os
 from pathlib import Path
-import shutil
 import tempfile
 import time
 
@@ -13,6 +12,7 @@ import dependencies_v1_cache as cache
 import dependencies_v1_layout as layout
 import dependencies_v1_manifest as manifest
 import dependencies_v1_plan as plan
+import dependencies_v1_projection as projection
 import dependencies_v1_selectors as selectors
 import dependencies_v1_snapshot as snapshot
 import pre_workspace as common
@@ -169,6 +169,7 @@ def prepare(
         compiler[0],
     )["products"]
     pins = {}
+    sources = {}
     inventories = {}
     for index, dep in enumerate(state["object"]["dependencies"]):
         label = "dependency-" + str(index)
@@ -249,21 +250,18 @@ def prepare(
             "version": dep["state"]["checkoutState"]["version"],
             "hash": fetched["hash"],
         }
+        sources[dep["name"]] = source
+    for index, dep in enumerate(state["object"]["dependencies"]):
+        label = "dependency-" + str(index)
         probe = temporary / (label + "-manifest")
-        shutil.copytree(source, probe, symlinks=True)
-        cache.source_tree(probe)
-        for directory, names, files in os.walk(probe):
-            Path(directory).chmod(Path(directory).stat().st_mode | 0o700)
-            for name in files:
-                path = Path(directory) / name
-                path.chmod(path.stat().st_mode | 0o200)
-
+        projection.writable_source(sources[dep["name"]], probe)
+        allowed = projection.prepare_probe(probe, pins, sources, dep["name"])
         validation = session.run(
             label + "-validation",
             [*package_command, "--verbose", "dump-package"],
             cwd=probe,
         )
-        invocation, declared = manifest.invocation(validation.stdout, probe)
+        invocation, declared = manifest.invocation(validation.stdout, probe, allowed)
         cache.require(
             invocation[0] == compiler[0], "native manifest selected compiler join"
         )
@@ -278,6 +276,7 @@ def prepare(
                 cwd=probe,
             ).stdout
         )
+        projection.verify_probe(probe, pins, dep["name"], declared)
         inventory = manifest.inventory(declared, dependency_graph, fd.protocol, probe)
         cache.require(
             inventory["package"] == dep["name"],

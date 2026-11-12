@@ -13,13 +13,24 @@ import dependencies_v1_plan as plan
 require = plan.require
 
 
-def invocation(stdout, root):
+def invocation(stdout, root, dependency_parents=None):
     """Recover the root invocation amid measured native dependency invocations."""
     require(
         isinstance(stdout, bytes) and len(stdout) <= 1024 * 1024,
         "native verbose manifest bound",
     )
     root = layout.canonical(root)
+    allowed = None
+    if dependency_parents is not None:
+        allowed = {layout.canonical(parent) for parent in dependency_parents}
+        require(
+            len(allowed) <= 1024
+            and all(
+                parent.parent == root / "Packages" and plan.safe_name(parent.name)
+                for parent in allowed
+            ),
+            "explicit owned manifest parents",
+        )
     try:
         lines = stdout.decode("utf-8").splitlines(keepends=True)
     except UnicodeError as error:
@@ -50,7 +61,12 @@ def invocation(stdout, root):
         require(len(manifests) == 1, "one native compiler manifest")
         parent = layout.canonical(manifests[0].parent)
         require(
-            parent == root or (parent.parent == root / ".build/checkouts"),
+            parent == root
+            or (
+                parent in allowed
+                if allowed is not None
+                else parent.parent == root / ".build/checkouts"
+            ),
             "native compiler manifest outside owned graph",
         )
         require(parent not in parents, "duplicate native compiler manifest")
