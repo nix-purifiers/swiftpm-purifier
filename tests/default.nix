@@ -84,7 +84,7 @@ let
   # `version`.
   readsVersion =
     version:
-    (import ../nix/lib/lock.nix {
+    (import ../lib-overlays/default/lock.nix {
       src = ./fixtures/hello;
       lockFile = lockFileOf (
         rehash (
@@ -279,7 +279,7 @@ in
 
   # lock.nix reads the version it supports and rejects any other.
   lock-version =
-    assert readsVersion (import ../nix/lib/lock-version.nix);
+    assert readsVersion (import ../lib-overlays/default/lock-version.nix);
     assert readsVersion 4;
     assert !(readsVersion 0);
     runCommand "lock-version" { } "touch $out";

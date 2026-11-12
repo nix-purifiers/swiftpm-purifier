@@ -74,7 +74,7 @@
 let
   inherit (swiftPackages) stdenv swift swiftpm;
 
-  selectedSDK = callPackage ./selected-sdk.nix { inherit swiftPackages; };
+  selectedSDK = callPackage ../swift-sdk/selected-sdk.nix { inherit swiftPackages; };
   data = (callPackage ./project-data.nix { inherit purifier; }) {
     inherit
       src

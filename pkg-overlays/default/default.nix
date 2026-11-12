@@ -4,7 +4,7 @@
 # the scope `pkgs.swiftpm-purifier`. The scope holds the packages of pkgs/
 # (`.cli`, the swiftpm-purifier command, and `.toolchain`, the Swift
 # toolchain whose `swift` runs through it) and the builder
-# `.buildSwiftPMProject` (nix/lib/build-swiftpm-project.nix), a package for
+# `.buildSwiftPMProject` (pkgs/build-swiftpm-project/default.nix), a package for
 # callPackage in that scope. `pkgs.swiftpm-purifier.overrideScope` replaces
 # what everything in the scope shares, and `.buildSwiftPMProject.override`
 # replaces what the builder takes. A consumer that lists this flake in
@@ -24,11 +24,11 @@ in
     // {
       swiftpm-purifier = added.swiftpm-purifier.overrideScope (
         self: super: {
-          projectData = self.callPackage ../../nix/lib/project-data.nix {
+          projectData = self.callPackage ../../pkgs/build-swiftpm-project/project-data.nix {
             inherit (closure-lib) purifier;
           };
-          retainedToolchain = self.callPackage ../../nix/lib/retained-toolchain.nix { };
-          buildSwiftPMProject = self.callPackage ../../nix/lib/build-swiftpm-project.nix {
+          retainedToolchain = self.callPackage ../../pkgs/retained-toolchain/default.nix { };
+          buildSwiftPMProject = self.callPackage ../../pkgs/build-swiftpm-project/default.nix {
             inherit (closure-lib) purifier;
           };
         }

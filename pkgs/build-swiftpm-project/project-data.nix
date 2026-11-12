@@ -23,7 +23,7 @@
   artifactBuildInputs ? [ ],
 }:
 let
-  read = import ./lock.nix {
+  read = import ../../lib-overlays/default/lock.nix {
     inherit
       src
       lockFile

@@ -156,7 +156,7 @@ def main():
             TMPDIR=str(args.output / "tmp"),
             XDG_CACHE_HOME=str(args.output / "cache"),
             SWIFTPM_READER_CASE=str(work),
-            SWIFTPM_READER_LIBRARY=str(root / "nix/lib/lock.nix"),
+            SWIFTPM_READER_LIBRARY=str(root / "lib-overlays/default/lock.nix"),
         )
         remaining = deadline - time.monotonic()
         if remaining <= 0:

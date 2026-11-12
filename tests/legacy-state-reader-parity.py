@@ -205,7 +205,7 @@ for name, expected, change, options in cases:
         python_error = None
     expression = (
         "let read = import "
-        + str(source / "nix/lib/lock.nix")
+        + str(source / "lib-overlays/default/lock.nix")
         + " { src = /. + "
         + json.dumps(str(root))
         + "; lockFile = /. + "
@@ -224,7 +224,7 @@ for name, expected, change, options in cases:
             + json.dumps(str(root))
             + '; name = "legacy-reader-source"; }; '
             "read = import "
-            + str(source / "nix/lib/lock.nix")
+            + str(source / "lib-overlays/default/lock.nix")
             + ' { src = source; lockFile = source + "/swiftpm-purifier.lock.json"; }; '
             "in { problems = read.lock.problems; entries = read.lock.entries; outputs = read.lock.outputs; workspaceState = if read.lock.problems == [] then read.workspaceState else null; }"
         )

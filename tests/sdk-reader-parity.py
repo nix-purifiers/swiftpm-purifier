@@ -99,7 +99,7 @@ def main():
             os.environ,
             TMPDIR=str(args.output / "tmp"),
             SDK_CASE=str(file),
-            SDK_READER=str(root / "nix/lib/sdk-contract.nix"),
+            SDK_READER=str(root / "lib-overlays/default/sdk-contract.nix"),
         )
         remaining = deadline - time.monotonic()
         if remaining <= 0:
