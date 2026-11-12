@@ -53,6 +53,27 @@ class Capture(unittest.TestCase):
         capture.native_pins(None, self.state)
         capture.native_pins(json.dumps(self.native).encode(), self.state)
 
+    def test_pin_domain_is_checked_before_fresh_native_resolution(self):
+        for field, value in (
+            ("package", "../escape"),
+            ("package", "x" * 256),
+            ("repositoryURL", "file:///outside/caller.git"),
+        ):
+            with self.subTest(field=field, value=value):
+                native = copy.deepcopy(self.native)
+                native["object"]["pins"][0][field] = value
+                with self.assertRaises(cache.Reject):
+                    capture.native_pin_records(json.dumps(native).encode())
+        native = copy.deepcopy(self.native)
+        duplicate = copy.deepcopy(native["object"]["pins"][0])
+        duplicate["package"] = "Other"
+        native["object"]["pins"].append(duplicate)
+        with self.assertRaises(cache.Reject):
+            capture.native_pin_records(json.dumps(native).encode())
+        native["object"]["pins"] = [duplicate] * 1025
+        with self.assertRaises(cache.Reject):
+            capture.native_pin_records(json.dumps(native).encode())
+
     def test_disagreeing_or_unknown_native_records_refuse(self):
         for name, change in [
             (
@@ -111,6 +132,34 @@ class Capture(unittest.TestCase):
 
         with self.assertRaises(cache.Reject):
             capture.prepare(None, None, API())
+
+    def test_absent_cache_basis_is_read_only_and_rechecked(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            self.assertIsNone(capture.capture_basis(root, {}))
+            self.assertEqual(list(root.iterdir()), [])
+            (root / ".build").mkdir()
+            with self.assertRaises((cache.Reject, FileNotFoundError)):
+                capture.verify_basis(root, {}, None)
+            self.assertEqual(list((root / ".build").iterdir()), [])
+
+    def test_absent_cache_does_not_adopt_legacy_or_foreign_state(self):
+        for name in ("Packages", "Package.pins"):
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary).resolve()
+                path = root / name
+                path.write_bytes(b"foreign state")
+                with self.assertRaises(cache.Reject):
+                    capture.capture_basis(root, {})
+                self.assertEqual(path.read_bytes(), b"foreign state")
+
+    def test_external_git_environment_refuses_even_without_cache(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary).resolve()
+            for variable in ("GIT_DIR", "GIT_WORK_TREE", "GIT_OBJECT_DIRECTORY"):
+                with self.subTest(variable=variable), self.assertRaises(cache.Reject):
+                    capture.capture_basis(root, {variable: "/foreign"})
+            self.assertEqual(list(root.iterdir()), [])
 
     def test_evidence_ignores_in_project_global_tmpdir(self):
         with tempfile.TemporaryDirectory() as temporary:

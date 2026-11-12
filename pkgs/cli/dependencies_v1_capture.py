@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 import time
+import shutil
 
 import dependencies_v1 as protocol
 import dependencies_v1_cache as cache
@@ -38,10 +39,10 @@ class NativeSession(common.NativeSession):
         self.save()
 
 
-def native_pins(raw, state, allow_stale=False):
-    """Bind native exact bytes semantically to actual checkout identities."""
+def native_pin_records(raw):
+    """Read only measured semantic-version pin records, including before fetch."""
     if raw is None:
-        return
+        return None
     value = cache.decode(raw)
     cache.require(
         isinstance(value, dict)
@@ -53,17 +54,23 @@ def native_pins(raw, state, allow_stale=False):
     cache.require(
         isinstance(value["object"], dict)
         and set(value["object"]) == {"pins"}
-        and isinstance(value["object"]["pins"], list),
+        and isinstance(value["object"]["pins"], list)
+        and len(value["object"]["pins"]) <= 1024,
         "native pin fields",
     )
     actual = {}
+    locations = set()
     for pin in value["object"]["pins"]:
         cache.require(
             isinstance(pin, dict) and set(pin) == {"package", "repositoryURL", "state"},
             "native pin record",
         )
         cache.require(
-            isinstance(pin["package"], str) and pin["package"] not in actual,
+            protocol.legacy.safe_name(pin["package"])
+            and len(pin["package"].encode("utf-8")) <= 255
+            and pin["package"] not in actual
+            and protocol.legacy.git_location(pin["repositoryURL"])
+            and pin["repositoryURL"] not in locations,
             "native pin identity",
         )
         checkout = pin["state"]
@@ -77,6 +84,15 @@ def native_pins(raw, state, allow_stale=False):
             "native semantic pin checkout shape",
         )
         actual[pin["package"]] = {"URL": pin["repositoryURL"], "state": pin["state"]}
+        locations.add(pin["repositoryURL"])
+    return actual
+
+
+def native_pins(raw, state, allow_stale=False):
+    """Bind native exact bytes semantically to actual checkout identities."""
+    actual = native_pin_records(raw)
+    if actual is None:
+        return
     expected = {
         dep["name"]: {
             "URL": dep["repositoryURL"],
@@ -92,6 +108,31 @@ def native_pins(raw, state, allow_stale=False):
         )
     else:
         cache.require(actual == expected, "native pin/checkouts identity join")
+
+
+def capture_basis(root, environment):
+    """Distinguish an absent cache from an existing, fully validated cache."""
+    cache.validate_environment(environment)
+    if not os.path.lexists(root / ".build"):
+        cache.require(
+            not os.path.lexists(root / "Packages"), "unrecognized Packages state"
+        )
+        cache.require(
+            not os.path.lexists(root / "Package.pins"), "mixed native pin format"
+        )
+        return None
+    cache.validate(root, environment)
+    return [
+        cache.regular_bytes(root, ".build/dependencies-state.json"),
+        cache.regular_bytes(root, ".build/repositories/checkouts-state.json"),
+    ]
+
+
+def verify_basis(root, environment, expected):
+    cache.require(
+        capture_basis(root, environment) == expected,
+        "caller native metadata changed during capture",
+    )
 
 
 def prepare(
@@ -112,15 +153,23 @@ def prepare(
     initial_manifest = common.manifest_hash(root)
     env = dict(os.environ)
     cache.require("SWIFTPM_BUILD_DIR" not in env, "external native build directory")
-    cache.validate(root, env)
-    initial_state_raw = cache.regular_bytes(root, ".build/dependencies-state.json")
-    initial_registry_raw = cache.regular_bytes(
-        root, ".build/repositories/checkouts-state.json"
-    )
-    initial_state = cache.decode(initial_state_raw)
-    native_pins(pin.raw, initial_state, allow_stale=True)
+    initial_basis = capture_basis(root, env)
+    native_pin_records(pin.raw)
     package = temporary / root.name
-    snapshot.snapshot(root, package, env)
+    if initial_basis is None:
+        shutil.copytree(
+            root,
+            package,
+            symlinks=True,
+            ignore=lambda parent, names: (
+                [name for name in names if name in layout.ROOT_DIRECTORIES]
+                if Path(parent) == root
+                else []
+            ),
+        )
+    else:
+        native_pins(pin.raw, cache.decode(initial_basis[0]), allow_stale=True)
+        snapshot.snapshot(root, package, env)
     # Native pin projection is confined to the owned copy; the logical caller
     # file and external selected file remain untouched throughout observation.
     projected = package / "Package.resolved"
@@ -135,7 +184,8 @@ def prepare(
     )
     session = NativeSession(package, env, temporary.parent)
     package_command = api.native_command("swift-package")
-    cache.validate(package, session.env)
+    if initial_basis is not None:
+        cache.validate(package, session.env)
     session.run(
         "native-resolution",
         [*package_command, *(["fetch"] if update is None else ["update", *update])],
@@ -345,13 +395,7 @@ def prepare(
         and common.manifest_hash(root) == initial_manifest,
         "caller source currency changed during capture",
     )
-    cache.validate(root, env)
-    cache.require(
-        cache.regular_bytes(root, ".build/dependencies-state.json") == initial_state_raw
-        and cache.regular_bytes(root, ".build/repositories/checkouts-state.json")
-        == initial_registry_raw,
-        "caller native metadata changed during capture",
-    )
+    verify_basis(root, env, initial_basis)
     session.receipt.update(
         complete=True,
         protocol="dependencies-state-v1",

@@ -125,13 +125,7 @@ def source_tree(root):
     return sorted(entries)
 
 
-def validate(root, environment=None):
-    """Pure filesystem validation: no Git, Swift, subprocess or runtime probe."""
-    root = Path(root)
-    directory(root)
-    require(root.absolute() == root.resolve(), "canonical native cache root")
-    for name in (".build", ".build/checkouts", ".build/repositories"):
-        directory(root / name)
+def validate_environment(environment=None):
     forbidden = {
         "GIT_DIR",
         "GIT_COMMON_DIR",
@@ -144,6 +138,16 @@ def validate(root, environment=None):
         not forbidden.intersection(os.environ if environment is None else environment),
         "external Git environment",
     )
+
+
+def validate(root, environment=None):
+    """Pure filesystem validation: no Git, Swift, subprocess or runtime probe."""
+    root = Path(root)
+    directory(root)
+    require(root.absolute() == root.resolve(), "canonical native cache root")
+    for name in (".build", ".build/checkouts", ".build/repositories"):
+        directory(root / name)
+    validate_environment(environment)
     require(
         not os.path.lexists(root / ".build/workspace-state.json"), "mixed native state"
     )
