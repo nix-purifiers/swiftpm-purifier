@@ -182,7 +182,8 @@ The standalone CLI uses the Swift runtime already selected by your PATH and
 `SWIFT_EXEC`. It keeps that runtime during capture, dependency prefetch and
 `swiftpm-purifier swift` commands. Management tools are added after the
 original PATH. No packaged Swift SDK is required for this local workflow.
-Local locks use portable format 4; runtime observations live under `.build`
+Local locks use portable format 4, or format 6 for original workspace-state
+version 1 with `Package.pins`; runtime observations live under `.build`
 for diagnostics and do not bind the lock to a host binary or SDK version.
 Native manifest and dependency requirements are checked by the selected
 SwiftPM and compiler.
@@ -209,6 +210,23 @@ package names and source locations SwiftPM actually recorded. Native
 option probes select available cache and prebuilt controls. Older native
 dependency-state layouts still need their own replay adapters; a native
 protocol error does not select a replacement compiler.
+
+Original workspace-state version 1 uses a separate portable format 6. Its
+resolved Git checkouts come from the native workspace; `Package.pins` may
+contain only some of those packages. The lock binds the exact native pin
+file bytes, including manual pin reasons and `autoPin`. Unchanged metadata
+keeps its original formatting. A missing native pin file is accepted only
+for an empty dependency graph, and remains absent during local commands.
+The default native filename is `Package.pins`; `packageResolved` and
+`--tool-lockfile` can select an external file. Ambiguous native filenames,
+local path dependencies in this protocol, and SDK-mode format 6 capture or
+consumption are rejected. Existing format 4 and 5 readers reject format 6.
+
+The original Swift 3.1.1 compiler and bundled SwiftPM 3.1.0 are a fixture
+point for this protocol. Pure builds can select that immutable SDK
+explicitly. Its native XCTest runner requires a debug build; release
+program builds are separate. These fixture versions do not restrict the
+runtime selected for local commands.
 
 `lib.swiftpm-purifier.readLock { src, lockFile ? ..., packageResolved ? ... }`
 gives the lock in memory of the purifier contract:
