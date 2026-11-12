@@ -14,6 +14,7 @@ from dependencies_v1_transaction import canonical
 from native_sdk import store_root
 
 MARKER = ".swiftpm-purifier-dependencies-v1-owned.json"
+MARKER_LIMIT = 16 * 1024 * 1024
 FIELDS = {
     "version",
     "protocol",
@@ -115,6 +116,7 @@ def validate_marker(value):
     cache.require(
         isinstance(value, dict) and set(value) == FIELDS, "closed owned marker"
     )
+    cache.require(len(canonical(value)) + 1 <= MARKER_LIMIT, "owned marker byte bound")
     cache.require(
         type(value["version"]) is int
         and value["version"] == 1
@@ -204,7 +206,7 @@ def existing(root, hash_tree, allow_missing_state=False):
     if not os.path.lexists(packages):
         return None
     cache.directory(packages)
-    marker = cache.regular_bytes(packages, MARKER)
+    marker = cache.regular_bytes(packages, MARKER, limit=MARKER_LIMIT)
     value = validate_marker(cache.decode(marker))
     cache.require(marker == canonical(value) + b"\n", "owned marker canonical bytes")
     cache.require(
@@ -251,6 +253,19 @@ def prepare_tree(root, lock, sources, destination, original, hash_tree):
         )
         cache.require(hash_tree(path) == pin["hash"], "fetched source NAR mismatch")
         checked[name] = path
+    value = {
+        "version": 1,
+        "protocol": "dependencies-state-v1",
+        "root": str(root),
+        "lockHash": lock["contentHash"],
+        "originalState": None
+        if original is None
+        else base64.b64encode(original).decode(),
+        "sources": cache.decode(canonical(lock["pins"])),
+        "projection": projection(root, lock["pins"]),
+    }
+    value["contentHash"] = protocol.content_hash(value)
+    validate_marker(value)
     destination.mkdir(mode=0o700)
     for name, path in checked.items():
         target = destination / name
@@ -268,19 +283,6 @@ def prepare_tree(root, lock, sources, destination, original, hash_tree):
             hash_tree(target) == lock["pins"][name]["hash"],
             "staged source NAR mismatch",
         )
-    value = {
-        "version": 1,
-        "protocol": "dependencies-state-v1",
-        "root": str(root),
-        "lockHash": lock["contentHash"],
-        "originalState": None
-        if original is None
-        else base64.b64encode(original).decode(),
-        "sources": cache.decode(canonical(lock["pins"])),
-        "projection": projection(root, lock["pins"]),
-    }
-    value["contentHash"] = protocol.content_hash(value)
-    validate_marker(value)
     (destination / MARKER).write_bytes(canonical(value) + b"\n")
     return value
 

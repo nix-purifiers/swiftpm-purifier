@@ -100,6 +100,16 @@ class Ownership(unittest.TestCase):
         self.assertEqual(basis["currentState"], self.state.read_bytes())
         self.assertIsNotNone(basis["packagesIdentity"])
 
+    def test_maximum_original_state_backup_remains_readable(self):
+        original = self.original_raw + b" " * (1024 * 1024 - len(self.original_raw))
+        self.marker["originalState"] = base64.b64encode(original).decode()
+        self.save_marker()
+        self.assertGreater(
+            (self.packages / ownership.MARKER).stat().st_size, 1024 * 1024
+        )
+        loaded = ownership.existing(self.root, fixture_hash)
+        self.assertEqual(base64.b64decode(loaded["originalState"]), original)
+
     def test_first_install_keeps_exact_native_state_without_mutation(self):
         shutil.rmtree(self.packages)
         self.state.write_bytes(self.original_raw)
