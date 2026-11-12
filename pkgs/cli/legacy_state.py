@@ -331,6 +331,13 @@ def capture(root, package, state, environment, isolation, api):
         locations.add(dependency["repositoryURL"])
     native_file = package / "Package.pins"
     metadata, metadata_hash = native_pins(native_file)
+    destination = api.legacy_native_path(root)
+    original_metadata, original_hash = native_pins(destination)
+    if metadata is not None and original_metadata == metadata:
+        # Native fetch may reformat unchanged metadata. Bind the developer's
+        # original bytes, including whitespace, rather than rewriting them.
+        native_file.write_bytes(destination.read_bytes())
+        metadata_hash = original_hash
     if (
         not api.TOOL_LOCK_OVERRIDE
         and native_file.exists()
@@ -379,7 +386,6 @@ def capture(root, package, state, environment, isolation, api):
     validate(lock, native_file)
     lock_bytes = (json.dumps(lock, indent=2, ensure_ascii=False) + "\n").encode()
     native_bytes = native_file.read_bytes() if native_file.exists() else None
-    destination = api.legacy_native_path(root)
     # Both payloads are completely validated and serialized before user files
     # change. Preserve original bytes and absence when native fetch does so.
     if native_bytes is None:
