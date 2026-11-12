@@ -62,6 +62,8 @@ stdenvNoCC.mkDerivation {
       ./legacy_manifest.py
       ./dependencies_v1_transaction.py
       ./dependencies_v1_capture.py
+      ./dependencies_v1_ownership.py
+      ./dependencies_v1_tree_transaction.py
       ./dependencies_v1_projection.py
       ./dependencies_v1_manifest.py
       ./dependencies_v1_plan.py
@@ -79,6 +81,8 @@ stdenvNoCC.mkDerivation {
       ./native_sdk.py
       ./host_runtime.py
       ./test_dependencies_v1_selectors.py
+      ./test_dependencies_v1_ownership.py
+      ./test_dependencies_v1_tree_transaction.py
       ./test_dependencies_v1_projection.py
       ./test_dependencies_v1_transaction.py
       ./test_dependencies_v1_capture.py
@@ -99,7 +103,7 @@ stdenvNoCC.mkDerivation {
   doCheck = true;
   checkPhase = ''
     runHook preCheck
-    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_swiftpm_purifier test_dependencies_v1 test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection)
+    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_swiftpm_purifier test_dependencies_v1 test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection test_dependencies_v1_ownership test_dependencies_v1_tree_transaction)
     runHook postCheck
   '';
 
@@ -111,6 +115,8 @@ stdenvNoCC.mkDerivation {
     cp pkgs/cli/legacy_manifest.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_transaction.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_capture.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v1_ownership.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v1_tree_transaction.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_projection.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_manifest.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_plan.py $out/libexec/swiftpm-purifier/
