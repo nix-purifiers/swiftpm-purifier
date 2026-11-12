@@ -49,6 +49,8 @@
   fetchurl,
   fetchgit,
   callPackage,
+  closureInfo,
+  nix,
   # The Swift toolchain: its stdenv builds, and its swift and swiftpm are
   # the tools of the build.
   swiftPackages,
@@ -72,34 +74,21 @@
 let
   inherit (swiftPackages) stdenv swift swiftpm;
 
-  read = import ./lock.nix { inherit lockFile src packageResolved; };
-
-  # checkLock of the purifier library stops the evaluation with the
-  # problems lock.nix found: a stale, tampered, malformed or incomplete
-  # lockfile, each with the command that fixes it.
-  current = builtins.seq (purifier.checkLock read.lock) true;
-
-  tree = import ./tree.nix {
-    inherit read runCommand;
-    entries = purifier.entriesFor stdenv.hostPlatform.system read.lock;
-    # fetchEntry takes by name the fetchers of the two kinds of entry that
-    # swiftpm-purifier writes, and the tools that unpack an archive.
-    fetchEntry = purifier.fetchEntry (
-      {
-        inherit
-          runCommand
-          unzip
-          zstd
-          python3
-          writeText
-          fetchurl
-          fetchgit
-          ;
-      }
-      // fetchers
-    );
-    patchArtifact = callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
+  selectedSDK = callPackage ./selected-sdk.nix { inherit swiftPackages; };
+  data = (callPackage ./project-data.nix { inherit purifier; }) {
+    inherit
+      src
+      fetchers
+      lockFile
+      packageResolved
+      artifactBuildInputs
+      ;
+    platform = stdenv.hostPlatform.system;
+    selectedSDK = selectedSDK.descriptor;
   };
+  inherit (data) read current tree;
+  sdkClosure = closureInfo { rootPaths = selectedSDK.roots; };
+  expectedSDK = writeText "expected-native-sdk.json" (builtins.toJSON read.nativeSDK);
 
   name = read.package;
 
@@ -138,6 +127,10 @@ let
         nativeBuildInputs = [
           swift
           swiftpm
+          python3
+        ]
+        ++ lib.optionals (read.nativeSDK != null) [
+          nix
         ]
         ++ (extraArgs.nativeBuildInputs or [ ]);
 
@@ -158,12 +151,35 @@ let
         # SwiftPM downloads prebuilt swift-syntax libraries for macros when
         # it can. The lock does not record them, so swift-syntax builds
         # from source, here and in the interactive mode.
-        swiftpmFlags = [ "--disable-experimental-prebuilts" ] ++ (extraArgs.swiftpmFlags or [ ]);
+        swiftpmFlags =
+          lib.optional (
+            read.nativeSDK != null
+            && builtins.elem "--disable-experimental-prebuilts" read.nativeSDK.capabilities.build
+          ) "--disable-experimental-prebuilts"
+          ++ (extraArgs.swiftpmFlags or [ ]);
 
         # Clang and SwiftPM keep caches in the home directory, which the
         # sandbox does not have.
         preConfigure = ''
+          export HOME=$TMPDIR/swiftpm-home
+          mkdir -p "$HOME"
           export CLANG_MODULE_CACHE_PATH=$TMPDIR/clang-module-cache
+          export SWIFT_EXEC=${swift}/bin/swiftc
+          ${lib.optionalString (read.nativeSDK == null) ''
+            # Portable locks carry no SDK capability attestation. Ask the
+            # actual selected build command before adding a native flag.
+            nativePrebuiltFlag=$(${lib.getExe python3} -c 'import sys; sys.path.insert(0,sys.argv[1]); import swiftpm_purifier as sp; print("--disable-experimental-prebuilts" if "--disable-experimental-prebuilts" in sp.native_options((sys.argv[2],"build"),None) else "")' ${../../pkgs/cli} ${swift}/bin/swift)
+            if [ -n "$nativePrebuiltFlag" ]; then
+              appendToVar swiftpmFlags "$nativePrebuiltFlag"
+            fi
+          ''}
+          ${lib.optionalString (read.nativeSDK != null) ''
+            echo "swiftpm-purifier: verifying selected native SDK"
+            ${lib.getExe python3} ${../../pkgs/cli}/verify_sdk.py \
+              --descriptor ${selectedSDK.file} --expected ${expectedSDK} \
+              --closure-paths ${sdkClosure}/store-paths --nix ${lib.getExe nix}
+            echo "swiftpm-purifier: selected native SDK verified"
+          ''}
           ${linkTree}
         ''
         # The macOS linker writes a debug map into each binary, which names
@@ -244,9 +260,7 @@ let
     builtins.filter (product: product.type == "library" && product.linkage == "static") read.products
   );
 
-  release =
-    assert current;
-    import ./source-archive.nix { inherit runCommand zip; } { inherit src name; };
+  release = data.release;
 
   basePackageOf =
     product:

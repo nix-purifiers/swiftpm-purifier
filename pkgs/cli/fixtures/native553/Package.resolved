@@ -1,0 +1,16 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "LegacyLeaf",
+        "repositoryURL": "http://127.0.0.1:39023/Leaf.git",
+        "state": {
+          "branch": null,
+          "revision": "a3c794be2ba770a26c163dbf6525f40e1222c8b5",
+          "version": "1.0.0"
+        }
+      }
+    ]
+  },
+  "version": 1
+}

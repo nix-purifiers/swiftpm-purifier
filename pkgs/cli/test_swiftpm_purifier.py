@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: MIT
 import hashlib
+import copy
 import json
 import tempfile
 import unittest
@@ -53,6 +54,174 @@ class ManifestHash(unittest.TestCase):
                 json.dumps(listing).replace(", ", ",").encode()
             ).hexdigest()
             self.assertEqual(sp.manifest_hash(root), expected)
+
+
+class LegacyResolved(unittest.TestCase):
+    fixtures = Path(__file__).parent / "fixtures/native553"
+
+    def setUp(self):
+        self.resolved = json.loads((self.fixtures / "Package.resolved").read_text())
+        self.dependency = json.loads(
+            (self.fixtures / "workspace-state.json").read_text()
+        )["object"]["dependencies"][0]
+        ref = self.dependency["packageRef"]
+        self.identities = {ref["location"]: ref["identity"]}
+
+    def read(self, value=None, identities=None):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "Package.resolved"
+            path.write_text(json.dumps(self.resolved if value is None else value))
+            return sp.resolved_pins(
+                path, self.identities if identities is None else identities
+            )
+
+    def test_uses_native_identity_instead_of_lowercasing_package_name(self):
+        actual = self.read()[0]
+        self.assertEqual(actual["identity"], "leaf")
+        self.assertEqual(actual["legacyPackage"], "LegacyLeaf")
+        self.assertEqual(sp.subpath_of(actual), "Leaf")
+
+    def test_derives_original_workspace_checkout_exactly(self):
+        actual = sp.record_of(self.read()[0], "LegacyLeaf")
+        self.assertEqual(actual["basedOn"], self.dependency)
+
+    def test_preserves_source_identity_join_in_written_pin(self):
+        actual = self.read()[0]
+        with (
+            mock.patch.object(sp, "mirrors", return_value={}),
+            mock.patch.object(
+                sp, "prefetch_git", return_value="sha256-test"
+            ) as prefetch,
+        ):
+            locked = sp.lock_pin(actual, self.dependency, Path("."), Path("config"))
+        self.assertEqual(locked["sourceLocation"], actual["location"])
+        self.assertEqual(locked["name"], "LegacyLeaf")
+        prefetch.assert_called_once_with(
+            actual["location"], actual["state"]["revision"]
+        )
+
+    def test_v1_pins_use_modern_workspace_protocol_when_native_state_is_7(self):
+        fixture = self.fixtures.parent / "native633-v1"
+        dependency = json.loads((fixture / "workspace-state.json").read_text())[
+            "object"
+        ]["dependencies"][0]
+        ref = dependency["packageRef"]
+        actual = sp.resolved_pins(
+            fixture / "Package.resolved", {ref["location"]: ref["identity"]}
+        )[0]
+        record = sp.record_of(actual, "LegacyLeaf", 7)
+        self.assertEqual(record["basedOn"], dependency)
+        self.assertEqual(record["packageRef"]["kind"], "remoteSourceControl")
+        self.assertEqual(record["basedOn"]["state"]["name"], "sourceControlCheckout")
+        self.assertNotIn("branch", record["basedOn"]["state"]["checkoutState"])
+        with (
+            mock.patch.object(sp, "mirrors", return_value={}),
+            mock.patch.object(sp, "prefetch_git", return_value="sha256-test"),
+        ):
+            locked = sp.lock_pin(actual, dependency, Path("."), Path("config"), 7)
+        self.assertEqual(locked["sourceLocation"], actual["location"])
+
+    def test_missing_native_identity_is_rejected(self):
+        with self.assertRaises(sp.PurifierError):
+            self.read(identities={})
+
+    def test_duplicate_native_identity_is_rejected(self):
+        value = copy.deepcopy(self.resolved)
+        value["object"]["pins"] *= 2
+        with self.assertRaises(sp.PurifierError):
+            self.read(value)
+
+    def test_invalid_legacy_states_are_rejected(self):
+        for state in [
+            None,
+            {"revision": True},
+            {"revision": "short"},
+            {"revision": "a" * 40, "extra": 1},
+            {"revision": "a" * 40, "branch": "main", "version": "1.0.0"},
+        ]:
+            with self.subTest(state=state):
+                value = copy.deepcopy(self.resolved)
+                value["object"]["pins"][0]["state"] = state
+                with self.assertRaises(sp.PurifierError):
+                    self.read(value)
+
+    def test_native_name_must_match_workspace(self):
+        actual = self.read()[0]
+        actual["legacyPackage"] = "Other"
+        with self.assertRaises(sp.PurifierError):
+            sp.lock_pin(actual, self.dependency, Path("."), Path("config"))
+
+
+class NativeSDKMetadata(unittest.TestCase):
+    """Pure contract checks on a physically measured original SDK snapshot."""
+
+    def setUp(self):
+        self.identity = json.loads(
+            (LegacyResolved.fixtures / "sdk-identity.json").read_text()
+        )
+
+    def test_actual_measured_identity_is_accepted(self):
+        self.assertIs(sp.native_sdk.validate_identity(self.identity), self.identity)
+
+    def test_missing_selected_closure_root_is_rejected(self):
+        path = self.identity["descriptor"]["components"]["swift"]["path"]
+        self.identity["closure"].pop(path)
+        with self.assertRaises(sp.native_sdk.SDKError):
+            sp.native_sdk.validate_identity(self.identity)
+
+    def test_wrong_compiler_command_is_rejected(self):
+        self.identity["descriptor"]["executables"]["swiftc"] = self.identity[
+            "descriptor"
+        ]["executables"]["swift"]
+        with self.assertRaises(sp.native_sdk.SDKError):
+            sp.native_sdk.validate_identity(self.identity)
+
+    def test_missing_stdenv_recipe_is_rejected(self):
+        self.identity["descriptor"]["components"]["stdenv"].pop("recipe")
+        with self.assertRaises(sp.native_sdk.SDKError):
+            sp.native_sdk.validate_identity(self.identity)
+
+    def test_nonstring_capability_is_rejected(self):
+        self.identity["capabilities"]["package"] = [{}]
+        with self.assertRaises(sp.native_sdk.SDKError):
+            sp.native_sdk.validate_identity(self.identity)
+
+    def test_environment_cannot_select_another_compiler(self):
+        self.identity["environment"]["variables"]["SWIFT_EXEC"] = self.identity[
+            "descriptor"
+        ]["executables"]["swift"]
+        with self.assertRaises(sp.native_sdk.SDKError):
+            sp.native_sdk.validate_identity(self.identity)
+
+    def test_physical_closure_mismatch_is_rejected(self):
+        lock = {"version": sp.LOCK_VERSION, "nativeSDK": copy.deepcopy(self.identity)}
+        path = self.identity["descriptor"]["components"]["swift"]["path"]
+        lock["nativeSDK"]["closure"][path] = "sha256-" + "A" * 43 + "="
+        with mock.patch.object(sp, "native_sdk_identity", return_value=self.identity):
+            with self.assertRaises(sp.PurifierError):
+                sp.require_native_sdk(lock)
+
+    def test_active_command_bindings_are_checked_even_with_measured_identity(self):
+        descriptor = self.identity["descriptor"]
+        variables = dict(
+            self.identity["environment"]["variables"],
+            PATH=self.identity["environment"]["pathPrefix"],
+        )
+        for role, name in {
+            "swift": "SWIFTPM_PURIFIER_SWIFT",
+            "package": "SWIFTPM_PURIFIER_SWIFT_PACKAGE",
+            "build": "SWIFTPM_PURIFIER_SWIFT_BUILD",
+            "test": "SWIFTPM_PURIFIER_SWIFT_TEST",
+            "run": "SWIFTPM_PURIFIER_SWIFT_RUN",
+        }.items():
+            variables[name] = descriptor["executables"][role]
+        with mock.patch.dict(sp.os.environ, variables, clear=True):
+            sp.native_sdk.check_active(self.identity)
+            sp.os.environ["SWIFTPM_PURIFIER_SWIFT_PACKAGE"] = descriptor["executables"][
+                "swift"
+            ]
+            with self.assertRaises(sp.native_sdk.SDKError):
+                sp.native_sdk.check_active(self.identity)
 
 
 class IsCurrent(unittest.TestCase):
@@ -139,10 +308,10 @@ class ReadLock(unittest.TestCase):
 
     def test_a_lockfile_changed_by_hand_is_refused(self):
         lock = {key: [] for key in sp.LOCK_KEYS}
-        lock["version"] = sp.LOCK_VERSION
+        lock["version"] = sp.LEGACY_LOCK_VERSION
         lock["contentHash"] = sp.content_hash(lock)
         self.write(json.dumps(lock))
-        self.assertEqual(sp.read_lock(self.root)["version"], sp.LOCK_VERSION)
+        self.assertEqual(sp.read_lock(self.root)["version"], sp.LEGACY_LOCK_VERSION)
         lock["pins"] = {"x": {"hash": "sha256-x"}}
         self.write(json.dumps(lock))
         self.assert_refused("contentHash")
@@ -150,6 +319,14 @@ class ReadLock(unittest.TestCase):
     def test_lock_replaces_an_unreadable_lockfile(self):
         self.write("{ not json")
         with mock.patch.object(sp, "relock") as relock:
+            sp.lock_command(self.root, force=False)
+        relock.assert_called_once_with(self.root)
+
+    def test_lock_upgrades_an_unbound_version_four_record(self):
+        with (
+            mock.patch.object(sp, "read_lock", return_value={"version": 4}),
+            mock.patch.object(sp, "relock") as relock,
+        ):
             sp.lock_command(self.root, force=False)
         relock.assert_called_once_with(self.root)
 
@@ -282,6 +459,73 @@ class LockPin(unittest.TestCase):
                 "hash": "sha256-y",
             },
         )
+
+
+class RelockFailureWrites(unittest.TestCase):
+    """Later validation failures must preserve both user-owned outputs."""
+
+    def exercise(self, failure):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Package.swift").write_text("// swift-tools-version:5.5\n")
+            resolved = root / "Package.resolved"
+            lock = root / sp.LOCK_NAME
+            old_resolved = b'{"version":3,"pins":[]}\n'
+            old_lock = b'{"previous":"user-owned-output"}\n'
+            resolved.write_bytes(old_resolved)
+            lock.write_bytes(old_lock)
+
+            def resolve(command, **kwargs):
+                package = kwargs["cwd"]
+                (package / "Package.resolved").write_text(
+                    json.dumps(
+                        {"version": 3, "pins": [pin("x", "https://example/x.git")]}
+                    )
+                )
+                (package / ".build").mkdir()
+                dependencies = (
+                    []
+                    if failure == "workspace"
+                    else [checkout("x", "https://example/x.git")]
+                )
+                (package / ".build/workspace-state.json").write_text(
+                    json.dumps(
+                        {
+                            "version": 6,
+                            "object": {"dependencies": dependencies, "artifacts": []},
+                        }
+                    )
+                )
+
+            products = mock.Mock(return_value=([], "Root"))
+            if failure == "products":
+                products.side_effect = sp.PurifierError(
+                    "native product inspection failed"
+                )
+            if failure == "serialization":
+                products.return_value = ([], {"not JSON serializable"})
+            with (
+                mock.patch.object(sp, "LOCK_OVERRIDE", None),
+                mock.patch.object(sp, "TOOL_LOCK_OVERRIDE", None),
+                mock.patch.object(sp, "swiftpm_isolation", return_value=[]),
+                mock.patch.object(sp, "native_sdk_identity", return_value={}),
+                mock.patch.object(sp, "run", side_effect=resolve),
+                mock.patch.object(sp, "lock_pin", return_value={"revision": "a" * 40}),
+                mock.patch.object(sp, "products", products),
+            ):
+                with self.assertRaises((sp.PurifierError, TypeError)):
+                    sp.relock(root)
+            self.assertEqual(resolved.read_bytes(), old_resolved)
+            self.assertEqual(lock.read_bytes(), old_lock)
+
+    def test_missing_workspace_pin_preserves_both_outputs(self):
+        self.exercise("workspace")
+
+    def test_failed_native_product_inspection_preserves_both_outputs(self):
+        self.exercise("products")
+
+    def test_serialization_failure_preserves_both_outputs(self):
+        self.exercise("serialization")
 
 
 class UnlockedWrapperTest(unittest.TestCase):

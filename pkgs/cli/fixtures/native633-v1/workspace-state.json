@@ -1,0 +1,30 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "leaf",
+          "kind" : "remoteSourceControl",
+          "location" : "http://127.0.0.1:43063/Leaf.git",
+          "name" : "LegacyLeaf"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "495b9c582cf2fe382700af25cf514bfcb8b694c5",
+            "version" : "1.0.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "Leaf"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

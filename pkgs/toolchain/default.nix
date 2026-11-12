@@ -7,24 +7,38 @@
 # use) comes from nixpkgs unchanged; sourcekit-lsp reads the locked
 # dependencies from the same links.
 {
+  lib,
   symlinkJoin,
   writeShellScriptBin,
   swiftPackages,
   cli,
 }:
 let
+  selectedCLI =
+    if lib.isDerivation cli && cli ? override then
+      cli.override {
+        inherit swiftPackages;
+        runtimeMode = "sdk";
+      }
+    else
+      throw "swiftpm-purifier: toolchain CLI has no source-owned SDK override recipe";
   swift = writeShellScriptBin "swift" ''
-    exec ${cli}/bin/swiftpm-purifier swift "$@"
+    exec ${selectedCLI}/bin/swiftpm-purifier swift "$@"
   '';
 in
+assert selectedCLI.nativeSDKDescriptor.components.swift.path == toString swiftPackages.swift;
+assert selectedCLI.nativeSDKDescriptor.components.swiftpm.path == toString swiftPackages.swiftpm;
+assert selectedCLI.nativeSDKDescriptor.components.stdenv.recipe == swiftPackages.stdenv.drvPath;
 symlinkJoin {
   name = "swiftpm-purifier-toolchain";
   paths = [
     swift
-    cli
+    selectedCLI
     swiftPackages.swift
     swiftPackages.swiftpm
-    swiftPackages.sourcekit-lsp
-  ];
+  ]
+  ++ lib.optional (
+    swiftPackages ? sourcekit-lsp && swiftPackages.sourcekit-lsp != null
+  ) swiftPackages.sourcekit-lsp;
   meta.mainProgram = "swift";
 }

@@ -27,6 +27,7 @@
   # SwiftPM's lockfile. A flake that keeps its own copy outside `src` passes
   # it here, and the build uses it in place of the one in `src`.
   packageResolved ? src + "/Package.resolved",
+  selectedSDK ? null,
 }:
 let
   relock = "Run `swiftpm-purifier relock` to write it again.";
@@ -38,6 +39,11 @@ let
   );
 
   supportedVersion = import ./lock-version.nix;
+  sdk = if (lock.version or null) == supportedVersion then lock.nativeSDK or null else null;
+  sdkContract = import ./sdk-contract.nix {
+    identity = sdk;
+    selected = selectedSDK;
+  };
 
   fields = [
     "version"
@@ -90,7 +96,73 @@ let
         version = 3;
         pins = [ ];
       };
-  resolvedPins = resolved.pins;
+  # Format 1 records a package name rather than its native identity. The
+  # lock run joins source locations to identities from the selected SDK's
+  # actual workspace, preserving Unicode and custom identity behavior.
+  legacyPin =
+    pin:
+    let
+      name = pin.package or null;
+      location = pin.repositoryURL or null;
+      state = pin.state or null;
+      optionalText = value: value == null || (builtins.isString value && value != "");
+      valid =
+        builtins.isAttrs pin
+        &&
+          builtins.attrNames pin == [
+            "package"
+            "repositoryURL"
+            "state"
+          ]
+        && builtins.isString name
+        && name != ""
+        && builtins.isString location
+        && location != ""
+        && builtins.isAttrs state
+        && builtins.all (
+          field:
+          builtins.elem field [
+            "branch"
+            "revision"
+            "version"
+          ]
+        ) (builtins.attrNames state)
+        && builtins.isString (state.revision or null)
+        && builtins.match "[0-9a-f]{40}([0-9a-f]{24})?" state.revision != null
+        && optionalText (state.branch or null)
+        && optionalText (state.version or null)
+        && !((state.branch or null) != null && (state.version or null) != null);
+      matches = builtins.filter (identity: (lock.pins.${identity}.sourceLocation or null) == location) (
+        builtins.attrNames lock.pins
+      );
+      identity = builtins.head matches;
+    in
+    if !valid then
+      throw "swiftpm-purifier: invalid version-1 pin"
+    else if builtins.length matches != 1 then
+      throw "swiftpm-purifier: missing or ambiguous native source identity"
+    else if (lock.pins.${identity}.name or null) != name then
+      throw "swiftpm-purifier: version-1 package name disagrees with native identity"
+    else
+      {
+        inherit identity location;
+        kind = if lock.workspaceStateVersion == 7 then "remoteSourceControl" else "remote";
+        state = {
+          branch = state.branch or null;
+          revision = state.revision;
+          version = state.version or null;
+        };
+      };
+  resolvedPins =
+    if (resolved.version or null) == 1 then
+      if
+        !(builtins.isAttrs (resolved.object or null) && builtins.isList (resolved.object.pins or null))
+      then
+        throw "swiftpm-purifier: invalid version-1 pins"
+      else
+        map legacyPin resolved.object.pins
+    else
+      resolved.pins;
 
   # The revision, or for a registry pin the version, that a pin and the
   # lockfile's record of it name.
@@ -108,25 +180,38 @@ let
   # The first problem in the order the checks depend on each other: a later
   # check reads what an earlier one verified.
   problem =
-    if !(lock ? version && lock.version == supportedVersion) then
+    if
+      !(
+        lock ? version
+        && builtins.isInt lock.version
+        && builtins.elem lock.version [
+          4
+          supportedVersion
+        ]
+      )
+    then
       "swiftpm-purifier: ${toString lockFile} has lock format version ${
         toString (lock.version or "none")
-      }; this library reads version ${toString supportedVersion}. Run `swiftpm-purifier relock` with the swiftpm-purifier revision of this library."
+      }; this library reads versions 4 and ${toString supportedVersion}. Run `swiftpm-purifier relock` with the swiftpm-purifier revision of this library."
     else if missingFields != [ ] then
       "swiftpm-purifier: ${toString lockFile} lacks ${builtins.concatStringsSep ", " missingFields}. ${relock}"
     else if lock.contentHash != contentHash then
       "swiftpm-purifier: ${toString lockFile} does not match its contentHash, so it was changed after the lock run wrote it. ${relock}"
+    else if lock.version == supportedVersion && sdkContract.problem != null then
+      "swiftpm-purifier: ${sdkContract.problem}. ${relock}"
     else if lock.manifestHash != manifestHash then
       "swiftpm-purifier: ${toString lockFile} is out of date with Package.swift in ${toString src}. Run `swiftpm-purifier lock`."
     else if
-      !builtins.elem (resolved.version or null) [
+      !builtins.isInt (resolved.version or null)
+      || !builtins.elem (resolved.version or null) [
+        1
         2
         3
       ]
     then
       "swiftpm-purifier: ${toString resolvedFile} has format version ${
         toString (resolved.version or "none")
-      }, which predates Swift 5.6. Run `swiftpm-purifier lock`, which resolves with the current toolchain."
+      }, which this library does not support. Run `swiftpm-purifier lock` with the project's toolchain."
     else if !(covered && sameSet) then
       "swiftpm-purifier: ${toString lockFile} is out of date with ${toString resolvedFile}. Run `swiftpm-purifier lock`."
     else
@@ -168,8 +253,14 @@ let
       }
     else
       {
-        name = "sourceControlCheckout";
-        checkoutState = pin.state;
+        name = if pin.kind == "remote" then "checkout" else "sourceControlCheckout";
+        checkoutState =
+          if lock.workspaceStateVersion == 7 then
+            builtins.removeAttrs pin.state (
+              builtins.filter (key: pin.state.${key} == null) (builtins.attrNames pin.state)
+            )
+          else
+            pin.state;
       };
 
   recordOf =
@@ -286,6 +377,7 @@ in
   };
 
   inherit (lock) package rootDirectory products;
+  nativeSDK = sdk;
   inherit storeName;
 
   # The fetch name of an entry: its tree path, made a valid store name.
@@ -295,8 +387,13 @@ in
     object = {
       artifacts = lock.binaryTargets;
       dependencies = lock.localDependencies ++ map recordOf resolvedPins;
-      prebuilts = [ ];
-    };
+    }
+    // (
+      if lock.workspaceStateVersion == 7 || (resolved.version or null) != 1 then
+        { prebuilts = [ ]; }
+      else
+        { }
+    );
     version = lock.workspaceStateVersion;
   };
 }

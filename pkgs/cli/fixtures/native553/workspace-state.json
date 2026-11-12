@@ -1,0 +1,1 @@
+{"object": {"artifacts": [], "dependencies": [{"basedOn": null, "packageRef": {"identity": "leaf", "kind": "remote", "location": "http://127.0.0.1:39023/Leaf.git", "name": "LegacyLeaf"}, "state": {"checkoutState": {"branch": null, "revision": "a3c794be2ba770a26c163dbf6525f40e1222c8b5", "version": "1.0.0"}, "name": "checkout"}, "subpath": "Leaf"}]}, "version": 4}

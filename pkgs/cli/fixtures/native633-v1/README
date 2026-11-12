@@ -1,0 +1,7 @@
+Actual Swift 6.3.3 / SwiftPM 6.3.3 native resolve output, retained unchanged.
+Fixture manifest tools version: 4.2. Package.resolved remains version 1;
+workspace state is version 7. No SDK command responses are substituted.
+Local protocol203-native-state receipt records the bounded native resolve.
+The loopback URL is fixture data, never a reusable download endpoint.
+Package.resolved SHA256 940366ab54151ed13a95d7132b2183775637dd409a1b050ac6e4b959fefd71ea
+workspace-state.json SHA256 d1675afbdc8c2d95aa45e7177a341c21be5c73e7d002495a9afffe1a84fe7420

@@ -24,6 +24,10 @@ in
     // {
       swiftpm-purifier = added.swiftpm-purifier.overrideScope (
         self: super: {
+          projectData = self.callPackage ../../nix/lib/project-data.nix {
+            inherit (closure-lib) purifier;
+          };
+          retainedToolchain = self.callPackage ../../nix/lib/retained-toolchain.nix { };
           buildSwiftPMProject = self.callPackage ../../nix/lib/build-swiftpm-project.nix {
             inherit (closure-lib) purifier;
           };

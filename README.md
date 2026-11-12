@@ -10,10 +10,10 @@ optional next step.
 From the project root:
 
 ```zsh
-nix shell 'github:nix-purifiers/swiftpm-purifier#toolchain'
+nix shell 'github:nix-purifiers/swiftpm-purifier#cli'
 swiftpm-purifier lock
-swift build
-swift test
+swiftpm-purifier swift build
+swiftpm-purifier swift test
 ```
 
 Commit the lockfiles that the lock command writes, including the build
@@ -25,27 +25,31 @@ No project Nix files are needed for this workflow.
 Sandboxed builds of the whole project are an optional
 [next step](#building-the-project-with-nix).
 
-The shell provides the `swift` wrapper. Use it for the locked
-development workflow. With no purifier lockfile, it warns on standard
-error and runs the ordinary tool with impure resolution.
+The CLI preserves the Swift runtime already selected by your PATH and
+`SWIFT_EXEC`. Use `swiftpm-purifier swift` for locked development and to
+preserve `Package.resolved` while SwiftPM works with edited dependencies.
+With no purifier lockfile, it delegates to that same installed runtime.
 
 For persistent use, add these packages through your usual Nix configuration.
 
 
 ## Development loop
 
-`nix shell 'github:nix-purifiers/swiftpm-purifier#toolchain'` gives a shell whose
-`swift` runs through `swiftpm-purifier swift`. In a package with an
-up-to-date lockfile, `swift build`, `swift test` and `swift run` use the
-locked dependencies, which the shell links into `Packages/` and
-`.build/artifacts/` from the Nix store. Outside that shell, run
-`swiftpm-purifier swift build`.
+`swiftpm-purifier swift build`, `swiftpm-purifier swift test` and
+`swiftpm-purifier swift run` delegate to the installed runtime on the
+locked dependencies. Prefetch links them into `Packages/` and
+`.build/artifacts/` from the Nix store.
+
+If you intentionally want a packaged runtime,
+`nix shell 'github:nix-purifiers/swiftpm-purifier#toolchain'` provides an
+explicit SDK and a `swift` wrapper for these commands. That is an optional
+alternative to your installed runtime.
 
 `swiftpm-purifier` is a standalone command that runs SwiftPM, not a SwiftPM
 package plugin. `swiftpm-purifier lock` records the downloads and keeps the
 pins of `Package.resolved` as they are. It relocks when `Package.swift` or the pins
 changed since the lockfile was made, and `relock` relocks regardless. A
-relock of an unchanged package reproduces the lockfile byte for byte.
+relock with unchanged native metadata reproduces the lockfile byte for byte.
 
 `swiftpm-purifier update [<package>...]` updates the pins through the
 `swift package update` command of SwiftPM, for every package or the named
@@ -174,6 +178,38 @@ The builder is a package for `callPackage` in that scope. It takes
 `swiftpm-purifier.overrideScope` replaces what everything in the scope
 shares.
 
+The standalone CLI uses the Swift runtime already selected by your PATH and
+`SWIFT_EXEC`. It keeps that runtime during capture, dependency prefetch and
+`swiftpm-purifier swift` commands. Management tools are added after the
+original PATH. No packaged Swift SDK is required for this local workflow.
+Local locks use portable format 4; runtime observations live under `.build`
+for diagnostics and do not bind the lock to a host binary or SDK version.
+Native manifest and dependency requirements are checked by the selected
+SwiftPM and compiler.
+
+An explicit packaged toolchain remains available. Select a project's
+compiler and SwiftPM together through `swiftPackages`, using
+`toolchain.override { inherit swiftPackages; }` and
+`buildSwiftPMProject.override { inherit swiftPackages; }`. To capture with
+that immutable SDK explicitly, use
+`cli.override { inherit swiftPackages; runtimeMode = "sdk"; }`.
+The set supplies concrete `swift`, `swiftpm` and `stdenv` derivations;
+`sourcekit-lsp` is optional.
+
+Explicit SDK capture writes format 5, recording the compiler, package
+manager, environment, derivation recipes and physical runtime closure.
+The SDK mode and sandboxed builder reject a different SDK before native
+build commands run. Those identities are specific to the host system;
+separate external locks can use `--lockfile`. Host runtime observations
+never serve as an immutable SDK attestation.
+
+Native `Package.resolved` formats 1, 2 and 3 are understood. For format 1,
+the native workspace supplies package identities; the purifier preserves
+package names and source locations SwiftPM actually recorded. Native
+option probes select available cache and prebuilt controls. Older native
+dependency-state layouts still need their own replay adapters; a native
+protocol error does not select a replacement compiler.
+
 `lib.swiftpm-purifier.readLock { src, lockFile ? ..., packageResolved ? ... }`
 gives the lock in memory of the purifier contract:
 `{ purifier, entries, outputs, problems }`. `problems` is empty for a usable
@@ -210,32 +246,38 @@ in
 .packages.hello'
 ```
 
-This uses the purifier's pinned nixpkgs, matching the lock command above.
+This chooses the packaged SDK from the purifier's pinned nixpkgs for a
+sandboxed build.
 To build with ambient `<nixpkgs>` from your Nix search path instead,
 replace `import purifier.inputs.nixpkgs` with `import <nixpkgs>`.
-Both forms need no Nix files in your project. The build tool and language
-versions must match the lockfile; with ambient nixpkgs, lock with the
-purifier from that package set or pass a compatible toolchain to the builder.
+Both forms need no Nix files in your project. The selected SDK must meet
+the project's native language and dependency requirements. A format 5 lock
+additionally requires the exact immutable SDK used for explicit SDK capture;
+pass that `swiftPackages` set to the builder. Local prefetch and development
+reject format 5 rather than ignoring its SDK binding. To adopt that project
+with an installed runtime, deliberately run local `relock` to write portable
+format 4, or keep using explicit SDK mode.
 
 ## Working offline
 
-`swiftpm-purifier prefetch` realizes in the Nix store the locked
-dependencies and the toolchain, which includes sourcekit-lsp. It links the
-dependencies into the package, writes the workspace state that marks them
-as edited, and keeps everything alive with a garbage-collector root under
-`.build/swiftpm-purifier`. After a prefetch, `swift build`, `swift test` and
-`swift run` work with the network cut off. `swiftpm-purifier uninstall`
+`swiftpm-purifier prefetch` realizes the locked dependencies in the Nix
+store, links them into the package, and writes the native workspace state.
+A garbage-collector root under `.build/swiftpm-purifier` keeps those
+artifacts alive. Local mode keeps your installed runtime and language
+server. Explicit SDK mode also retains its selected packaged tools.
+After prefetch, `swiftpm-purifier swift build`, `test` and `run` replay the
+locked dependencies with the origin offline. `swiftpm-purifier uninstall`
 removes the links. The default `.gitignore` that SwiftPM writes already
 ignores `/Packages`.
 
 ## Editor
 
-The toolchain includes sourcekit-lsp, and `prefetch` also writes the
-workspace state into `.build/index-build`, where sourcekit-lsp builds its
-background index. Editor support does not work yet: the sourcekit-lsp 6.3.3
-in nixpkgs cannot find the SourceKit plugin of its toolchain and cannot
-create a build server, so it resolves no symbols, with or without
-swiftpm-purifier.
+Local mode uses your existing language server. `prefetch` also writes the
+native workspace state into `.build/index-build` for its background index.
+The optional packaged toolchain includes sourcekit-lsp when that SDK
+provides one. The pinned nixpkgs sourcekit-lsp 6.3.3 has an unresolved
+SourceKit plugin lookup problem and cannot create its build server;
+that packaged-editor limitation does not select or replace a local editor.
 
 ## Troubleshooting
 
@@ -245,6 +287,7 @@ that fixes it.
 
 | Message | Cause | Fix |
 |---|---|---|
+| `no Swift runtime on the original host PATH` | No installed Swift driver was available before adding management tools. | Select your existing Swift installation on PATH. |
 | `is out of date with Package.resolved` or `with Package.swift` | The pins or the manifests changed since the lock run. | `swiftpm-purifier lock` |
 | `does not match its contentHash` | The lockfile was edited after the lock run wrote it. | `swiftpm-purifier relock` |
 | `lacks <field>` or `is not valid JSON` | The lockfile is incomplete or damaged. | `swiftpm-purifier relock` |
