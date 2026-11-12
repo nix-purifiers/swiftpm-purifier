@@ -20,13 +20,9 @@ originalSwift311InstallPhase() {
     while IFS= read -r -d '' name; do
         install -D -m 755 "$products/$name" "$out/bin/$name"
     done < <(@python@ -c 'import json,sys; p=json.load(open(sys.argv[1])); sys.stdout.write("".join(x["name"]+"\0" for x in p if x["type"] == "executable"))' "$swiftpmPurifierProducts")
-    while IFS= read -r -d '' name; do
-        for suffix in so a; do
-            if [ -e "$products/lib$name.$suffix" ]; then
-                install -D -t "$out/lib" "$products/lib$name.$suffix"
-            fi
-        done
-    done < <(@python@ -c 'import json,sys; p=json.load(open(sys.argv[1])); sys.stdout.write("".join(x["name"]+"\0" for x in p if x["type"] == "library"))' "$swiftpmPurifierProducts")
+    while IFS= read -r -d '' name && IFS= read -r -d '' suffix; do
+        install -D -t "$out/lib" "$products/lib$name.$suffix"
+    done < <(@python@ -c 'import json,sys; p=json.load(open(sys.argv[1])); sys.stdout.write("".join(x["name"]+"\0"+("so" if x["linkage"] == "dynamic" else "a")+"\0" for x in p if x["type"] == "library"))' "$swiftpmPurifierProducts")
     for module in "$products"/*.swiftmodule "$products"/*.swiftdoc "$products"/Modules/*.swiftmodule; do
         [ ! -e "$module" ] || install -D -t "$out/lib/swift/linux" "$module"
     done
