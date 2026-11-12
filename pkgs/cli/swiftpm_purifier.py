@@ -280,6 +280,10 @@ def require_runtime(root, lock):
     if sdk_mode():
         require_native_sdk(lock)
         return None
+    if lock["version"] == LOCK_VERSION:
+        raise PurifierError(
+            "this format 5 lock is bound to an immutable SDK; use explicit SDK mode, or deliberately run local `relock` to capture a portable format 4 lock"
+        )
     observation = observe_host_runtime()
     # The real host compiler/SwiftPM validate the project's manifest API.
     # Observations never impose a version, path, or binary-hash lock-in.
@@ -1209,7 +1213,7 @@ def swift_command(arguments):
             file=sys.stderr,
         )
         os.execvp(swift, [swift, *arguments])
-    if sdk_mode():
+    if sdk_mode() or lock["version"] == LOCK_VERSION:
         require_runtime(root, lock)
     if arguments and arguments[0] in BUILDING_SUBCOMMANDS:
         native = (
@@ -1253,6 +1257,8 @@ def swift_command(arguments):
 
 
 def main(argv=None):
+    if not sdk_mode():
+        os.environ.update(host_runtime.anchored_environment(os.environ, os.getcwd()))
     argv = sys.argv[1:] if argv is None else argv
     # Everything after `swift` belongs to SwiftPM, options included, so it
     # bypasses argparse.

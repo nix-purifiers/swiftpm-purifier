@@ -253,7 +253,10 @@ replace `import purifier.inputs.nixpkgs` with `import <nixpkgs>`.
 Both forms need no Nix files in your project. The selected SDK must meet
 the project's native language and dependency requirements. A format 5 lock
 additionally requires the exact immutable SDK used for explicit SDK capture;
-pass that `swiftPackages` set to the builder.
+pass that `swiftPackages` set to the builder. Local prefetch and development
+reject format 5 rather than ignoring its SDK binding. To adopt that project
+with an installed runtime, deliberately run local `relock` to write portable
+format 4, or keep using explicit SDK mode.
 
 ## Working offline
 

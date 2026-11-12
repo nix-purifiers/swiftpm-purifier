@@ -28,6 +28,7 @@ def main():
     sys.path.insert(0, str(root / "pkgs/cli"))
     import bounded_native
     import host_runtime
+    import swiftpm_purifier
 
     work = args.output.resolve()
     work.mkdir()
@@ -54,7 +55,7 @@ def main():
         (work / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
 
     env = dict(
-        os.environ,
+        host_runtime.anchored_environment(os.environ, os.getcwd()),
         HOME=str(work / "home"),
         TMPDIR=str(work / "tmp"),
         XDG_CACHE_HOME=str(work / "cache"),
@@ -234,12 +235,76 @@ def main():
         lock = json.loads((project / "swiftpm-purifier.lock.json").read_text())
         assert lock["version"] == 4 and "nativeSDK" not in lock
         assert inputs(project) == baseline
+        # Negative input only: a measured SDK identity makes a well-formed
+        # bound lock. This does not claim that the host attests that SDK.
+        bound = work / "bound-negative"
+        shutil.copytree(
+            project, bound, ignore=shutil.ignore_patterns(".build", "Packages")
+        )
+        bound_lock = dict(lock)
+        bound_lock["version"] = 5
+        bound_lock["nativeSDK"] = json.loads(
+            (root / "pkgs/cli/fixtures/native553/sdk-identity.json").read_text()
+        )
+        bound_lock["contentHash"] = swiftpm_purifier.content_hash(bound_lock)
+        (bound / "swiftpm-purifier.lock.json").write_text(
+            json.dumps(bound_lock, indent=2)
+        )
+        bound_before = inputs(bound)
+        bound_bytes = (bound / "swiftpm-purifier.lock.json").read_bytes()
+        for label, arguments, child in [
+            (
+                "bound-local-prefetch-no-host",
+                ["prefetch"],
+                dict(env, PATH=str(work / "empty-path")),
+            ),
+            ("bound-local-test", ["swift", "test"], env),
+        ]:
+            run(
+                label,
+                [cli, "--package-path", str(bound), *arguments],
+                rejection=b"format 5 lock is bound",
+                child_env=child,
+            )
+            assert inputs(bound) == bound_before
+            assert (bound / "swiftpm-purifier.lock.json").read_bytes() == bound_bytes
+            assert not (bound / ".build/swiftpm-purifier").exists()
+        receipt["bound5LocalConsumptionRejected"] = True
         receipt["requestsBeforePrefetch"] = len(receipt["requests"])
         run("local-prefetch", [cli, "--package-path", str(project), "prefetch"])
         assert any(
             "/objects/" in path
             for path in receipt["requests"][receipt["requestsBeforePrefetch"] :]
         ), "cold Nix fetch saw no object GETs"
+        if "swiftc" in selected["commands"]:
+            relative_bin = work / "relative-bin"
+            relative_bin.mkdir()
+            (relative_bin / "swift").symlink_to(selected["commands"]["swift"])
+            relative_compiler = os.path.relpath(selected["commands"]["swiftc"], work)
+            relative_env = dict(
+                env,
+                PATH=os.path.relpath(relative_bin, work) + os.pathsep + env["PATH"],
+                SWIFT_EXEC=relative_compiler,
+            )
+            run(
+                "relative-original-cwd-prefetch",
+                [cli, "--package-path", str(project), "prefetch"],
+                child_env=relative_env,
+            )
+            relative_observed = json.loads(
+                (
+                    project / ".build/swiftpm-purifier/observed-host-runtime.json"
+                ).read_text()
+            )
+            assert relative_observed["overrides"]["SWIFT_EXEC"] == os.path.abspath(
+                selected["commands"]["swiftc"]
+            )
+            assert (
+                relative_observed["originalOverrides"]["SWIFT_EXEC"]
+                == relative_compiler
+            )
+            assert inputs(project) == baseline
+            receipt["relativeCompilerAnchored"] = True
     finally:
         server.shutdown()
         server.server_close()
@@ -259,7 +324,10 @@ def main():
         (project / ".build/swiftpm-purifier/observed-host-runtime.json").read_text()
     )
     assert observed["commands"]["swift"]["path"] == selected["commands"]["swift"]
-    assert observed["overrides"] == selected["overrides"]
+    effective = host_runtime.anchored_environment(env, work)
+    assert observed["overrides"] == {
+        name: effective[name] for name in selected["overrides"]
+    }
     assert not (project / ".build/swiftpm-purifier/toolchain").exists()
     assert inputs(project) == baseline
     assert (project / "swiftpm-purifier.lock.json").read_bytes() == lock_bytes

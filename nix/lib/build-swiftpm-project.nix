@@ -127,9 +127,9 @@ let
         nativeBuildInputs = [
           swift
           swiftpm
+          python3
         ]
         ++ lib.optionals (read.nativeSDK != null) [
-          python3
           nix
         ]
         ++ (extraArgs.nativeBuildInputs or [ ]);
@@ -153,8 +153,8 @@ let
         # from source, here and in the interactive mode.
         swiftpmFlags =
           lib.optional (
-            read.nativeSDK == null
-            || builtins.elem "--disable-experimental-prebuilts" read.nativeSDK.capabilities.build
+            read.nativeSDK != null
+            && builtins.elem "--disable-experimental-prebuilts" read.nativeSDK.capabilities.build
           ) "--disable-experimental-prebuilts"
           ++ (extraArgs.swiftpmFlags or [ ]);
 
@@ -165,6 +165,14 @@ let
           mkdir -p "$HOME"
           export CLANG_MODULE_CACHE_PATH=$TMPDIR/clang-module-cache
           export SWIFT_EXEC=${swift}/bin/swiftc
+          ${lib.optionalString (read.nativeSDK == null) ''
+            # Portable locks carry no SDK capability attestation. Ask the
+            # actual selected build command before adding a native flag.
+            nativePrebuiltFlag=$(${lib.getExe python3} -c 'import sys; sys.path.insert(0,sys.argv[1]); import swiftpm_purifier as sp; print("--disable-experimental-prebuilts" if "--disable-experimental-prebuilts" in sp.native_options((sys.argv[2],"build"),None) else "")' ${../../pkgs/cli} ${swift}/bin/swift)
+            if [ -n "$nativePrebuiltFlag" ]; then
+              appendToVar swiftpmFlags "$nativePrebuiltFlag"
+            fi
+          ''}
           ${lib.optionalString (read.nativeSDK != null) ''
             echo "swiftpm-purifier: verifying selected native SDK"
             ${lib.getExe python3} ${../../pkgs/cli}/verify_sdk.py \

@@ -38,6 +38,43 @@ def executable(value, host_path):
     return os.path.abspath(found)
 
 
+def anchored_environment(environment, invocation_cwd):
+    """Keep relative executable settings meaningful after native cwd changes."""
+    result = dict(environment)
+
+    def paths(value):
+        return os.pathsep.join(
+            os.path.abspath(os.path.join(invocation_cwd, entry))
+            if not os.path.isabs(entry)
+            else entry
+            for entry in value.split(os.pathsep)
+        )
+
+    result["SWIFTPM_PURIFIER_HOST_PATH"] = paths(
+        environment.get("SWIFTPM_PURIFIER_HOST_PATH", environment.get("PATH", ""))
+    )
+    result["PATH"] = paths(environment.get("PATH", ""))
+    originals = {}
+    for name in (
+        "SWIFT_EXEC",
+        "SWIFT_EXEC_MANIFEST",
+        "_SWIFT_EXEC_MANIFEST",
+        "SWIFT_DRIVER_SWIFT_FRONTEND_EXEC",
+    ):
+        value = environment.get(name)
+        if value is None:
+            continue
+        originals[name] = value
+        if value and not os.path.isabs(value):
+            result[name] = (
+                shutil.which(value, path=result["SWIFTPM_PURIFIER_HOST_PATH"])
+                if os.sep not in value
+                else None
+            ) or os.path.abspath(os.path.join(invocation_cwd, value))
+    result["SWIFTPM_PURIFIER_ORIGINAL_OVERRIDES"] = json.dumps(originals)
+    return result
+
+
 def discover(host_path, environment):
     if not isinstance(host_path, str):
         raise HostRuntimeError("original host PATH was not captured")
@@ -134,6 +171,11 @@ def observe(runtime, environment, evidence, options=None):
             for role, path in runtime["commands"].items()
         },
         "overrides": runtime["overrides"],
+        "originalOverrides": json.loads(
+            environment.get(
+                "SWIFTPM_PURIFIER_ORIGINAL_OVERRIDES", json.dumps(runtime["overrides"])
+            )
+        ),
         "versions": {"compiler": compiler, "swiftpm": manager},
         "host": {"platform": sys.platform, "machine": platform.machine()},
         "compilerTarget": next(
