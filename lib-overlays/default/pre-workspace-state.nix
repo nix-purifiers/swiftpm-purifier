@@ -197,6 +197,28 @@ let
   indexType = buildEntries."index-build" or "missing";
   indexEntries =
     if indexType == "directory" then builtins.readDir (src + "/.build/index-build") else { };
+  buildTree =
+    path: depth:
+    let
+      entries = builtins.readDir path;
+      children = map (
+        name:
+        if entries.${name} == "directory" && depth < 256 then
+          buildTree (path + "/${name}") (depth + 1)
+        else
+          {
+            valid = entries.${name} == "regular";
+            count = 0;
+          }
+      ) (names entries);
+      count =
+        builtins.length (names entries) + builtins.foldl' (sum: child: sum + child.count) 0 children;
+    in
+    {
+      inherit count;
+      valid = count <= 100000 && all (child: child.valid) children;
+    };
+  buildSafe = buildType != "directory" || (buildTree (src + "/.build") 0).valid;
   absence =
     packageResolved == null
     && !(rootEntries ? "Package.pins")
@@ -209,6 +231,20 @@ let
       "missing"
       "directory"
     ]
+    &&
+      all
+        (
+          name:
+          builtins.elem (buildEntries.${name} or "missing") [
+            "directory"
+            "missing"
+          ]
+        )
+        [
+          "debug"
+          "release"
+        ]
+    && buildSafe
     && !(builtins.any stateName (names buildEntries))
     && !(builtins.any stateName (names indexEntries));
   layout = import ./pre-workspace-layout.nix { inherit src lockFile; };

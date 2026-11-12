@@ -37,7 +37,13 @@ LEGACY_LOCK_VERSION = 4
 # The lockfile `--lockfile` names, or for the `swift` verb
 # SWIFTPM_PURIFIER_LOCKFILE; without either, the lockfile in the package.
 LOCK_OVERRIDE = os.environ.get("SWIFTPM_PURIFIER_LOCKFILE")
-RAW_LOCK_OVERRIDE = LOCK_OVERRIDE
+RAW_LOCK_OVERRIDE = (
+    None
+    if LOCK_OVERRIDE is None
+    else LOCK_OVERRIDE
+    if os.path.isabs(LOCK_OVERRIDE)
+    else os.path.join(os.getcwd(), LOCK_OVERRIDE)
+)
 RAW_SOURCE_REFERENCE = None
 
 
@@ -48,11 +54,7 @@ def lock_path(root: Path) -> Path:
 def purifier_lock_reference(root):
     if RAW_LOCK_OVERRIDE is None:
         return root / LOCK_NAME
-    return (
-        RAW_LOCK_OVERRIDE
-        if os.path.isabs(RAW_LOCK_OVERRIDE)
-        else os.path.join(os.getcwd(), RAW_LOCK_OVERRIDE)
-    )
+    return RAW_LOCK_OVERRIDE
 
 
 def source_reference(root):
@@ -1740,6 +1742,8 @@ def main(argv=None):
     swift.add_argument("arguments", nargs=argparse.REMAINDER)
     options = parser.parse_args(argv)
     global LOCK_OVERRIDE, RAW_LOCK_OVERRIDE, RAW_SOURCE_REFERENCE, TOOL_LOCK_OVERRIDE
+    if LOCK_OVERRIDE is not None:
+        LOCK_OVERRIDE = str(Path(LOCK_OVERRIDE).resolve())
     if options.package_path is not None:
         RAW_SOURCE_REFERENCE = (
             options.package_path
@@ -1747,7 +1751,11 @@ def main(argv=None):
             else os.path.join(os.getcwd(), options.package_path)
         )
     if options.lockfile is not None:
-        RAW_LOCK_OVERRIDE = options.lockfile
+        RAW_LOCK_OVERRIDE = (
+            options.lockfile
+            if os.path.isabs(options.lockfile)
+            else os.path.join(os.getcwd(), options.lockfile)
+        )
         LOCK_OVERRIDE = str(Path(options.lockfile).resolve())
     if options.tool_lockfile is not None:
         TOOL_LOCK_OVERRIDE = str(options.tool_lockfile.resolve())

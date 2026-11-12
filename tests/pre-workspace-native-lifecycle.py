@@ -391,6 +391,70 @@ def main():
             "cold Nix prefetch saw no complete validated Git pack response"
         )
         receipt["successfulColdObjectResponses"] = successful
+        # Independently index the physical response pack, then join its
+        # canonical commit/tree/blob objects to this nonce source fixture.
+        audit = work / "cold-pack-repository"
+        run("cold-pack-init", ["git", "init", "--bare", str(audit)])
+        for index, event in enumerate(successful):
+            raw = (work / event["packFile"]).read_bytes()
+            packed = audit / "objects/pack" / ("pack-" + raw[-20:].hex() + ".pack")
+            packed.write_bytes(raw)
+            run(
+                "cold-pack-index-" + str(index),
+                ["git", "index-pack", "--strict", str(packed)],
+            )
+        revision = lock["pins"]["LegacyLeaf"]["revision"]
+        prefix = ["git", "--git-dir", str(audit)]
+        assert (
+            run("cold-commit-type", [*prefix, "cat-file", "-t", revision]).strip()
+            == b"commit"
+        )
+        listing = run("cold-source-tree", [*prefix, "ls-tree", "-rz", revision])
+        files = {}
+        for entry in listing.split(b"\0"):
+            if not entry:
+                continue
+            metadata, path = entry.split(b"\t", 1)
+            mode, kind, oid = metadata.decode().split()
+            assert mode == "100644" and kind == "blob"
+            files[path.decode()] = oid
+        expected_files = {"Package.swift", "Sources/LegacyLeaf/Leaf.swift"}
+        assert set(files) == expected_files
+        for index, (path, oid) in enumerate(sorted(files.items())):
+            raw = run(
+                "cold-source-blob-" + str(index), [*prefix, "cat-file", "blob", oid]
+            )
+            assert raw == (leaf / path).read_bytes()
+        objects = (
+            run(
+                "cold-objects",
+                [*prefix, "cat-file", "--batch-all-objects", "--batch-check"],
+            )
+            .decode()
+            .splitlines()
+        )
+        (work / "cold-objects").mkdir()
+        receipt["coldCanonicalObjects"] = []
+        for row in objects:
+            oid, kind, size = row.split()
+            raw = run("cold-object-" + oid, [*prefix, "cat-file", kind, oid])
+            assert len(raw) == int(size)
+            assert (
+                hashlib.sha1(
+                    kind.encode() + b" " + size.encode() + b"\0" + raw
+                ).hexdigest()
+                == oid
+            )
+            (work / "cold-objects" / oid).write_bytes(raw)
+            receipt["coldCanonicalObjects"].append(
+                {
+                    "oid": oid,
+                    "type": kind,
+                    "bytes": len(raw),
+                    "sha256": hashlib.sha256(raw).hexdigest(),
+                }
+            )
+        receipt["coldSourceFiles"] = files
         receipt["requestsAfterPrefetch"] = len(receipt["requests"])
     finally:
         server.shutdown()

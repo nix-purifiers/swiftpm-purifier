@@ -204,6 +204,28 @@ def native_absence(root, override=None):
     require(not build.is_symlink(), "format 7 build metadata must not be a symlink")
     if os.path.lexists(build):
         require(build.is_dir(), "format 7 build metadata must be a directory")
+        for name in ("debug", "release"):
+            path = build / name
+            require(
+                not os.path.lexists(path) or (path.is_dir() and not path.is_symlink()),
+                "format 7 generated output root must be a real directory",
+            )
+        import stat
+
+        entries = 0
+        for directory, names, files in os.walk(build, followlinks=False):
+            require(
+                len(Path(directory).relative_to(build).parts) <= 256,
+                "format 7 build tree exceeds depth bound",
+            )
+            for name in names + files:
+                entries += 1
+                require(entries <= 100000, "format 7 build tree exceeds entry bound")
+                mode = (Path(directory) / name).lstat().st_mode
+                require(
+                    stat.S_ISREG(mode) or stat.S_ISDIR(mode),
+                    "format 7 build tree contains a symlink or nonregular output",
+                )
         for directory in (build, build / "index-build"):
             require(
                 not directory.is_symlink(),

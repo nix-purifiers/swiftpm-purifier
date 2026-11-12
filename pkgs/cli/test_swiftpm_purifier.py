@@ -1001,5 +1001,61 @@ class UnlockedWrapperTest(unittest.TestCase):
             self.assertNotIn("native stderr", result.stderr)
 
 
+class PreWorkspacePathSelection(unittest.TestCase):
+    def test_relative_external_selection_survives_package_path_chdir(self):
+        original = os.getcwd()
+        with tempfile.TemporaryDirectory() as temporary:
+            caller = Path(temporary)
+            project = caller / "project"
+            project.mkdir()
+            external = caller / "outside.lock"
+            for command in ("lock", "prefetch", "swift"):
+                for environment_selected in (False, True):
+                    with self.subTest(
+                        command=command, environment=environment_selected
+                    ):
+                        os.chdir(caller)
+                        observed = []
+
+                        def inspect(*args, **kwargs):
+                            observed.append(True)
+                            self.assertEqual(sp.lock_path(project), external)
+                            self.assertEqual(
+                                Path(sp.purifier_lock_reference(project)), external
+                            )
+
+                        try:
+                            with (
+                                mock.patch.multiple(
+                                    sp,
+                                    LOCK_OVERRIDE="outside.lock"
+                                    if environment_selected
+                                    else None,
+                                    RAW_LOCK_OVERRIDE=str(external)
+                                    if environment_selected
+                                    else None,
+                                    RAW_SOURCE_REFERENCE=None,
+                                ),
+                                mock.patch.object(sp, "sdk_mode", return_value=True),
+                                mock.patch.object(
+                                    sp, "swift_command", side_effect=inspect
+                                ),
+                                mock.patch.object(
+                                    sp, "lock_command", side_effect=inspect
+                                ),
+                                mock.patch.object(sp, "prefetch", side_effect=inspect),
+                            ):
+                                argv = ["--package-path", str(project)]
+                                if not environment_selected:
+                                    argv += ["--lockfile", "outside.lock"]
+                                argv += [command] + (
+                                    ["build"] if command == "swift" else []
+                                )
+                                self.assertEqual(sp.main(argv), 0)
+                                self.assertEqual(observed, [True])
+                        finally:
+                            os.chdir(original)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -157,6 +157,28 @@ check("mixed-workspace", False)
 check("unknown-native-metadata", False)
 (root / ".build/unknown.json").unlink()
 check("empty-build-dir", True)
+outside = output / "outside-output"
+outside.mkdir()
+(outside / "keep").write_text("outside bytes")
+for name in ("debug", "release", "debug.yaml"):
+    path = root / ".build" / name
+    path.symlink_to(outside)
+    check("aliased-output-" + name.replace(".", "-"), False)
+    path.unlink()
+    path.symlink_to(output / "missing-output")
+    check("dangling-output-" + name.replace(".", "-"), False)
+    path.unlink()
+for name in ("debug", "release"):
+    path = root / ".build" / name
+    path.write_text("not a directory")
+    check("non-directory-output-" + name, False)
+    path.unlink()
+(root / ".build/debug/Modules").mkdir(parents=True)
+alias = root / ".build/debug/Modules/escape"
+alias.symlink_to(outside)
+check("nested-output-ancestor-alias", False)
+alias.unlink()
+assert (outside / "keep").read_text() == "outside bytes"
 (root / "Sources/One/One.swift").write_text("// content edit\n")
 check("content-edit-layout-stable", True)
 (root / "Sources/Added").mkdir()
