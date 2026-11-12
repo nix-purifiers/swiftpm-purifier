@@ -95,7 +95,10 @@ def validate(root, environment=None):
         "GIT_WORK_TREE",
         "GIT_INDEX_FILE",
     }
-    require(not forbidden.intersection(environment or {}), "external Git environment")
+    require(
+        not forbidden.intersection(os.environ if environment is None else environment),
+        "external Git environment",
+    )
     require(
         not os.path.lexists(root / ".build/workspace-state.json"), "mixed native state"
     )
@@ -268,18 +271,64 @@ def validate(root, environment=None):
             parser.read_string(
                 regular_bytes(root, str((tree / "config").relative_to(root))).decode()
             )
+            require(not parser.defaults(), "unmeasured Git config defaults")
             require(
-                not any(
-                    section.lower().startswith(("include", "extensions"))
-                    for section in parser.sections()
+                set(parser["core"])
+                <= {"repositoryformatversion", "filemode", "bare", "logallrefupdates"},
+                "unmeasured Git core configuration",
+            )
+            require(
+                parser["core"].get("repositoryformatversion") == "0",
+                "Git repository format",
+            )
+            require(
+                parser["core"].get("bare") == ("false" if tree == gitdir else "true"),
+                "Git bare role",
+            )
+            for key in ("filemode", "logallrefupdates"):
+                require(
+                    key not in parser["core"]
+                    or parser["core"][key] in ("true", "false"),
+                    "Git boolean configuration",
+                )
+            origin = parser['remote "origin"']
+            require(
+                set(origin) <= {"url", "fetch", "tagopt", "mirror"},
+                "unmeasured Git remote configuration",
+            )
+            require(origin["url"] == expected, "origin chain")
+            require(
+                origin.get("fetch")
+                == (
+                    "+refs/heads/*:refs/remotes/origin/*"
+                    if tree == gitdir
+                    else "+refs/*:refs/*"
                 ),
-                "external config",
+                "native fetch refspec",
             )
-            require(parser['remote "origin"']["url"] == expected, "origin chain")
             require(
-                not {"worktree", "fsmonitor", "hookspath"}.intersection(parser["core"]),
-                "external config command/path",
+                "tagopt" not in origin or origin["tagopt"] == "--no-tags",
+                "native tag option",
             )
+            require(
+                "mirror" not in origin or origin["mirror"] == "true",
+                "native mirror option",
+            )
+            for section in parser.sections():
+                if section in ("core", 'remote "origin"'):
+                    continue
+                require(
+                    re.fullmatch(r'branch "[^"\r\n]+"', section) is not None,
+                    "unmeasured Git configuration section",
+                )
+                branch = parser[section]
+                require(
+                    set(branch) == {"remote", "merge"}
+                    and branch["remote"] == "origin"
+                    and branch["merge"].startswith("refs/heads/")
+                    and not any(ord(c) < 32 or ord(c) == 127 for c in branch["merge"]),
+                    "native branch tracking configuration",
+                )
         results.append(
             {
                 "subpath": subpath,
