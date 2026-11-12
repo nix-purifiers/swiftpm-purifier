@@ -7,8 +7,9 @@
   configuration ? "release",
 }:
 let
-  pkgs = import /nix/store/cm5m4hjjh37s6z82rwa0vhkbcga3m8bq-source { };
-  purifier = import /nix/store/iirdlbmpdxf9539j0h0ww94rd69n5n4r-source/nix/lib {
+  fixture = builtins.getFlake ("path:" + toString ../.);
+  pkgs = import fixture.inputs.nixpkgs { };
+  purifier = import (fixture.inputs.purifier + "/nix/lib") {
     inherit (pkgs) lib;
   };
   swiftPackages = import ./sdk/swift403/package-set.nix { inherit pkgs; };

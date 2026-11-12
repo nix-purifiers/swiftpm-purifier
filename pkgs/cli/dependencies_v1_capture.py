@@ -233,7 +233,9 @@ def candidate(api, temporary, environment):
             and state["version"] == 1
         ):
             body = state.get("object")
-            dependencies = body.get("dependencies", []) if isinstance(body, dict) else []
+            dependencies = (
+                body.get("dependencies", []) if isinstance(body, dict) else []
+            )
             if (
                 isinstance(dependencies, list)
                 and len(dependencies) == 1

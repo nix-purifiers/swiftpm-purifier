@@ -4,7 +4,6 @@
 { pkgs }:
 let
   sdk = import ./default.nix { inherit pkgs; };
-  existing = "/nix/store/1hnldmhza7zqfb6m12m9q3lmzki2z0x3-original-swift-sdk-4.0.3";
   hook = pkgs.makeSetupHook {
     name = "original-swift403-build-hook";
     substitutions = {
@@ -24,7 +23,6 @@ let
         ln -s ${sdk}/lib "$out/lib"
       '';
 in
-assert toString sdk == existing && builtins.pathExists existing;
 {
   inherit (pkgs) stdenv;
   swift = sdk;

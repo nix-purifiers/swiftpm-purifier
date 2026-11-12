@@ -40,6 +40,8 @@ For persistent use, add these packages through your usual Nix configuration.
 locked dependencies. Prefetch links them into `Packages/` and
 `.build/artifacts/` from the Nix store. The pre-workspace Git protocol
 instead installs verified, owned copies with their real Git metadata.
+The dependencies-state version-1 protocol installs verified, owned copies
+without Git metadata and projects the native edited-dependency state.
 
 If you intentionally want a packaged runtime,
 `nix shell 'github:nix-purifiers/swiftpm-purifier#toolchain'` provides an
@@ -184,8 +186,9 @@ The standalone CLI uses the Swift runtime already selected by your PATH and
 `swiftpm-purifier swift` commands. Management tools are added after the
 original PATH. No packaged Swift SDK is required for this local workflow.
 Local locks use portable format 4, format 6 for original workspace-state
-version 1 with `Package.pins`, or format 7 for the pre-workspace Git
-protocol. Runtime observations are diagnostic and do not bind the lock
+version 1 with `Package.pins`, format 7 for the pre-workspace Git
+protocol, or format 8 for `.build/dependencies-state.json` version 1.
+Runtime observations are diagnostic and do not bind the lock
 to a host binary or SDK version.
 Native manifest and dependency requirements are checked by the selected
 SwiftPM and compiler.
@@ -264,6 +267,51 @@ point for this protocol, including debug XCTest, release programs,
 multi-module static/dynamic libraries and executable aliases. This is
 an individual fixture point, not a claim about every historical release
 or Darwin runtime.
+
+Portable format 8 represents a separate native protocol: dependencies-state
+version 1 with version-1 `Package.resolved` bytes or their explicit absence.
+It is not workspace-state version 1 (format 6) or dependencies-state version 2.
+Capture reads actual native state and manifest protocols, Git revisions,
+source hashes and compiler build plans. A local fixture detects the selected
+package manager's native state geometry without reading the project's pins
+or choosing an adapter from its release number. Fresh projects and verified
+native or purifier-owned caches are resolved in an owned source copy.
+
+This protocol currently supports nonempty remote Git graphs with semantic
+versions and Swift targets. Native declarations bind explicit product targets
+separately from the transitive modules they export. Pure builds preserve
+automatic libraries as their real object files and modules; they do not
+invent a static archive. Branch-only or revision-only pins, local or binary
+dependencies, unrecognized legacy declaration forms, and mixed native state
+are rejected rather than interpreted as another lock format.
+
+Use the default root lock and pins, or independently select fully external
+files with `--lockfile` and `--tool-lockfile`. The pure reader also distinguishes
+an omitted `packageResolved` argument from explicit `null`. Pin bytes and
+absence are bound independently of any unselected logical-root file. Source
+layout and manifest changes require relocking. Symlink, hardlink and in-tree
+selector aliases are refused by the host mutators.
+
+Prefetch validates the selected runtime's actual manifest protocols, direct
+dependency references, product/module plan, edited-state behavior and output
+geometry in a separate owned arena before installation. It installs verified
+VCS-free sources transactionally, preserving the original native cache.
+Relock and update can operate while those dependencies remain installed.
+Uninstall removes only verified owned sources and restores the original
+native-state bytes or absence. Dirty or unowned dependencies are preserved
+and refused. The local `swift` wrapper holds the root lock while projecting
+selected pin bytes or absence and recoverably restoring the logical-root
+file; detected foreign edits are preserved for inspection. Recovery precedes
+subsequent format-8 mutations.
+
+The original Swift 4.0.3 compiler with SwiftPM 4.0.0-dev is a measured Linux
+fixture point, including a transitive remote graph, native build/clean/rebuild,
+pure XCTest and installed product consumers. Default and read-only external
+selectors are exercised through the installed local CLI. Explicit-null pins
+are exercised through the pure reader and host lifecycle helper. These are
+individual measured domains, not a version interval or Darwin claim.
+Format 8 has no SDK-bound CLI capture or consumption mode; pure builds may
+select an explicit immutable SDK. Formats 4–7 retain their own readers.
 
 `lib.swiftpm-purifier.readLock { src, lockFile ? ..., packageResolved ? ... }`
 gives the lock in memory of the purifier contract:
