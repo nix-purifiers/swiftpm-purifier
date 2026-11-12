@@ -56,6 +56,13 @@ jobs:
             ${{ runner.temp }}/legacy-state/receipt.json
             ${{ runner.temp }}/legacy-state/logs
             ${{ runner.temp }}/legacy-state/native-dependencies-state.json
+            ${{ runner.temp }}/legacy-state/fixture-before-capture
+            ${{ runner.temp }}/legacy-state/leaf/Package.swift
+            ${{ runner.temp }}/legacy-state/leaf/Sources
+            ${{ runner.temp }}/legacy-state/remote
+            ${{ runner.temp }}/legacy-state/relocated/Package.swift
+            ${{ runner.temp }}/legacy-state/relocated/Sources
+            ${{ runner.temp }}/legacy-state/relocated/Tests
             ${{ runner.temp }}/legacy-state/original/Package.resolved
             ${{ runner.temp }}/legacy-state/original/swiftpm-purifier.lock.json
             ${{ runner.temp }}/legacy-state/relocated/Package.resolved

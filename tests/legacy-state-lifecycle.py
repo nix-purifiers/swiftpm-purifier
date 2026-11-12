@@ -13,9 +13,11 @@ import http.server
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import sys
 import threading
+import time
 import uuid
 
 
@@ -77,8 +79,9 @@ def main():
         env.pop(key, None)
 
     def run(label, command, cwd=work, timeout=240):
-        row = {"label": label}
+        row = {"label": label, "startedMonotonicNs": time.monotonic_ns()}
         receipt["commands"].append(row)
+        receipt["activeCommand"] = label
         result = bounded_native.run_recorded(
             command,
             record=row,
@@ -89,6 +92,9 @@ def main():
             timeout=timeout,
             output_limit=16 * 1024 * 1024,
         )
+        row["finishedMonotonicNs"] = time.monotonic_ns()
+        receipt["activeCommand"] = None
+        save()
         if result.returncode:
             raise RuntimeError(
                 label + ": " + result.stderr.decode(errors="replace")[-3000:]
@@ -151,7 +157,7 @@ def main():
         "// " + uuid.uuid4().hex + "\npublic func leafAnswer()->Int{return 42}\n",
     )
     for label, command in (
-        ("git-init", ["git", "init", "-q"]),
+        ("git-init", ["git", "init", "-q", "--object-format=sha1"]),
         ("git-add", ["git", "add", "."]),
         ("git-commit", ["git", "commit", "-m", "historical fixture"]),
         ("git-tag", ["git", "tag", "1.0.0"]),
@@ -169,9 +175,45 @@ def main():
         def log_message(self, *arguments):
             pass
 
+        def send_response(self, code, message=None):
+            self.event["status"] = code
+            super().send_response(code, message)
+
+        def copyfile(self, source, outputfile):
+            digest = hashlib.sha256()
+            offset = source.tell()
+            source.seek(0, os.SEEK_END)
+            self.event["expectedBytes"] = source.tell() - offset
+            source.seek(offset)
+            while chunk := source.read(64 * 1024):
+                outputfile.write(chunk)
+                self.event["bytes"] += len(chunk)
+                digest.update(chunk)
+            self.event["bodySha256"] = digest.hexdigest()
+            self.event["bodyComplete"] = (
+                self.event["bytes"] == self.event["expectedBytes"]
+            )
+
+        def record_request(self, method, action):
+            self.event = {
+                "method": method,
+                "path": self.path,
+                "phase": receipt.get("activeCommand"),
+                "startedMonotonicNs": time.monotonic_ns(),
+                "bytes": 0,
+                "bodyComplete": False,
+            }
+            try:
+                action()
+            finally:
+                self.event["finishedMonotonicNs"] = time.monotonic_ns()
+                receipt["requests"].append(self.event)
+
         def do_GET(self):
-            receipt["requests"].append(self.path)
-            super().do_GET()
+            self.record_request("GET", super().do_GET)
+
+        def do_HEAD(self):
+            self.record_request("HEAD", super().do_HEAD)
 
     server = http.server.ThreadingHTTPServer(
         ("127.0.0.1", 0), functools.partial(Handler, directory=str(work / "remote"))
@@ -227,6 +269,12 @@ def main():
         (work / "native-dependencies-state.json").write_bytes(native.read_bytes())
         assert json.loads(native.read_text())["version"] == 2
         baseline = inputs(project)
+        receipt["inputsBeforeCapture"] = baseline
+        shutil.copytree(
+            project,
+            work / "fixture-before-capture",
+            ignore=shutil.ignore_patterns(".build", ".swiftpm", "Packages"),
+        )
         run("local-lock", [cli, "lock"], project)
         lock = json.loads((project / "swiftpm-purifier.lock.json").read_text())
         assert (
@@ -236,12 +284,29 @@ def main():
         )
         assert all(inputs(project)[name] == digest for name, digest in baseline.items())
         baseline = inputs(project)
+        receipt["inputsAfterCapture"] = baseline
         receipt["requestsAfterLock"] = len(receipt["requests"])
         run("cold-prefetch", [cli, "prefetch"], project)
-        assert any(
-            "/objects/" in path
-            for path in receipt["requests"][receipt["requestsAfterLock"] :]
-        ), "cold Nix prefetch saw no object GETs"
+        command = receipt["commands"][-1]
+        successful = [
+            event
+            for event in receipt["requests"]
+            if event["phase"] == "cold-prefetch"
+            and event["method"] == "GET"
+            and re.fullmatch(
+                r"/Leaf\.git/objects/(?:[0-9a-f]{2}/[0-9a-f]{38}|pack/pack-[0-9a-f]{40}\.pack)",
+                event["path"],
+            )
+            and event.get("status") == 200
+            and event["bytes"] > 0
+            and event["bodyComplete"]
+            and command["startedMonotonicNs"] <= event["startedMonotonicNs"]
+            and event["finishedMonotonicNs"] <= command["finishedMonotonicNs"]
+        ]
+        assert successful, (
+            "cold Nix prefetch saw no complete successful Git object response"
+        )
+        receipt["successfulColdObjectResponses"] = successful
         receipt["requestsAfterPrefetch"] = len(receipt["requests"])
     finally:
         server.shutdown()
@@ -259,7 +324,8 @@ def main():
         out = run("relocated-" + label, [cli, "swift", *arguments], relocated)
         if label == "run":
             assert b"ANSWER|42|compiler4" in out
-    assert inputs(relocated) == baseline
+    receipt["inputsAfterReplay"] = inputs(relocated)
+    assert receipt["inputsAfterReplay"] == baseline
     if args.pure:
         env["NATIVE_PROJECT"] = str(relocated)
         expression = (
