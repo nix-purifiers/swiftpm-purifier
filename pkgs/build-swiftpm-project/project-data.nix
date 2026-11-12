@@ -23,16 +23,18 @@
   lockFile ? src + "/swiftpm-purifier.lock.json",
   packageResolved ? null,
   artifactBuildInputs ? [ ],
-}:
+}@args:
 let
-  read = import ../../lib-overlays/default/lock.nix {
-    inherit
-      src
-      lockFile
-      packageResolved
-      selectedSDK
-      ;
-  };
+  read = import ../../lib-overlays/default/lock.nix (
+    {
+      inherit
+        src
+        lockFile
+        selectedSDK
+        ;
+    }
+    // (if args ? packageResolved then { inherit packageResolved; } else { })
+  );
   current = builtins.seq (purifier.checkLock read.lock) true;
   tree =
     assert current;
@@ -50,25 +52,28 @@ let
           ;
       }
     else
-      import ./tree.nix {
-        inherit read runCommand;
-        entries = purifier.entriesFor platform read.lock;
-        fetchEntry = purifier.fetchEntry (
-          {
-            inherit
-              runCommand
-              unzip
-              zstd
-              python3
-              writeText
-              fetchurl
-              fetchgit
-              ;
-          }
-          // fetchers
-        );
-        patchArtifact = callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
-      };
+      import (if read.lockVersion == 8 then ./dependencies-v1-tree.nix else ./tree.nix) (
+        {
+          inherit read runCommand;
+          entries = purifier.entriesFor platform read.lock;
+          fetchEntry = purifier.fetchEntry (
+            {
+              inherit
+                runCommand
+                unzip
+                zstd
+                python3
+                writeText
+                fetchurl
+                fetchgit
+                ;
+            }
+            // fetchers
+          );
+          patchArtifact = callPackage ./patch-artifact.nix { buildInputs = artifactBuildInputs; };
+        }
+        // (if read.lockVersion == 8 then { inherit python3; } else { })
+      );
   release =
     assert current;
     import ./source-archive.nix { inherit runCommand zip; } {

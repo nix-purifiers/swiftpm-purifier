@@ -28,7 +28,7 @@
   # it here, and the build uses it in place of the one in `src`.
   packageResolved ? null,
   selectedSDK ? null,
-}:
+}@args:
 let
   relock = "Run `swiftpm-purifier relock` to write it again.";
 
@@ -518,72 +518,86 @@ let
     in
     if undotted == "" then "entry" else undotted;
 in
-{
-  lock = {
-    purifier = "swiftpm-purifier";
-    inherit problems;
+if builtins.isAttrs lock && (lock.version or null) == 8 then
+  import ./dependencies-v1-state.nix (
+    {
+      inherit
+        lock
+        src
+        lockFile
+        storeName
+        ;
+      raw = builtins.readFile lockFile;
+    }
+    // (if args ? packageResolved then { inherit packageResolved; } else { })
+  )
+else
+  {
+    lock = {
+      purifier = "swiftpm-purifier";
+      inherit problems;
 
-    entries =
-      if usable then
-        if preWorkspaceFormat then
-          preWorkspace.entries
-        else
-          map entryOf resolvedPins
-          ++ map binaryEntryOf (builtins.filter (target: target.source.type == "remote") lock.binaryTargets)
-      else
-        [ ];
-
-    # Each product of the package by name, with its type and, for a
-    # library, its linkage.
-    outputs =
-      if usable then
-        builtins.listToAttrs (
-          map (product: {
-            inherit (product) name;
-            value = product;
-          }) lock.products
-        )
-      else
-        { };
-  };
-
-  inherit (lock) package rootDirectory products;
-  inherit toolLockName;
-  preWorkspace = if preWorkspaceFormat then preWorkspace else null;
-  toolLockFile = resolvedFile;
-  lockVersion = lock.version;
-  nativeSDK = sdk;
-  inherit storeName;
-
-  # The fetch name of an entry: its tree path, made a valid store name.
-  entryName = entry: storeName entry.path;
-
-  workspaceState =
-    if preWorkspaceFormat then
-      null
-    else if legacyFormat then
-      legacy.workspaceState
-    else
-      {
-        object = {
-          dependencies = lock.localDependencies ++ map recordOf resolvedPins;
-        }
-        // (if lock.workspaceStateVersion == 2 then { } else { artifacts = lock.binaryTargets; })
-        // (
-          if lock.workspaceStateVersion == 2 then
-            { }
-          else if lock.workspaceStateVersion == 7 || (resolved.version or null) != 1 then
-            { prebuilts = [ ]; }
+      entries =
+        if usable then
+          if preWorkspaceFormat then
+            preWorkspace.entries
           else
-            { }
-        );
-        version = lock.workspaceStateVersion;
-      };
-  workspaceStateFile =
-    if preWorkspaceFormat then
-      null
-    else if lock.workspaceStateVersion == 2 then
-      "dependencies-state.json"
-    else
-      "workspace-state.json";
-}
+            map entryOf resolvedPins
+            ++ map binaryEntryOf (builtins.filter (target: target.source.type == "remote") lock.binaryTargets)
+        else
+          [ ];
+
+      # Each product of the package by name, with its type and, for a
+      # library, its linkage.
+      outputs =
+        if usable then
+          builtins.listToAttrs (
+            map (product: {
+              inherit (product) name;
+              value = product;
+            }) lock.products
+          )
+        else
+          { };
+    };
+
+    inherit (lock) package rootDirectory products;
+    inherit toolLockName;
+    preWorkspace = if preWorkspaceFormat then preWorkspace else null;
+    toolLockFile = resolvedFile;
+    lockVersion = lock.version;
+    nativeSDK = sdk;
+    inherit storeName;
+
+    # The fetch name of an entry: its tree path, made a valid store name.
+    entryName = entry: storeName entry.path;
+
+    workspaceState =
+      if preWorkspaceFormat then
+        null
+      else if legacyFormat then
+        legacy.workspaceState
+      else
+        {
+          object = {
+            dependencies = lock.localDependencies ++ map recordOf resolvedPins;
+          }
+          // (if lock.workspaceStateVersion == 2 then { } else { artifacts = lock.binaryTargets; })
+          // (
+            if lock.workspaceStateVersion == 2 then
+              { }
+            else if lock.workspaceStateVersion == 7 || (resolved.version or null) != 1 then
+              { prebuilts = [ ]; }
+            else
+              { }
+          );
+          version = lock.workspaceStateVersion;
+        };
+    workspaceStateFile =
+      if preWorkspaceFormat then
+        null
+      else if lock.workspaceStateVersion == 2 then
+        "dependencies-state.json"
+      else
+        "workspace-state.json";
+  }
