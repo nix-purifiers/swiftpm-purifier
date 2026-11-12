@@ -249,7 +249,10 @@ External/shared Git object stores and aliased build outputs are rejected.
 Prefetch installs full, owned Git checkouts transactionally. It refuses
 to replace an unowned or edited `Packages` cache; move an existing native
 cache aside first. Repeated prefetch preserves unchanged owned bytes,
-and uninstall removes only verified owned dependencies. Local commands
+and uninstall removes only verified owned dependencies. Actual Git
+constructs each checkout's index from its verified commit. Normal index
+stat-cache refreshes are accepted after checking index entries against
+the commit; staged content or mode changes are refused. Local commands
 keep the selected developer runtime. Format 7 has no SDK-bound capture
 mode; pure builds can explicitly select an immutable SDK separately.
 Older format 4, 5 and 6 readers reject format 7.

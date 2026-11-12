@@ -9,6 +9,7 @@ import shutil
 import tempfile
 
 import pre_workspace as protocol
+import pre_workspace_git as git_metadata
 
 STATE = "preworkspace-owned.json"
 
@@ -28,8 +29,8 @@ def regular_directory(path):
     return path.is_dir() and not path.is_symlink()
 
 
-def existing_state(root, nix_hash):
-    """Read and verify every previously owned byte before any write."""
+def existing_state(root, nix_hash, git="git"):
+    """Verify ownership bytes and actual index semantics before any write."""
     cache = root / "Packages"
     build = root / ".build"
     private = build / "swiftpm-purifier"
@@ -57,7 +58,7 @@ def existing_state(root, nix_hash):
         isinstance(old, dict)
         and set(old) == {"version", "packages"}
         and type(old["version"]) is int
-        and old["version"] == 1,
+        and old["version"] == 2,
         "invalid ownership state",
     )
     require(isinstance(old["packages"], dict), "invalid owned packages map")
@@ -79,13 +80,13 @@ def existing_state(root, nix_hash):
         checkout = cache / name
         require(regular_directory(checkout), "owned checkout was replaced")
         require(
-            hash_path(checkout, nix_hash) == digest,
+            git_metadata.normalized_hash(checkout, nix_hash, git) == digest,
             "refusing to replace an edited owned checkout",
         )
     return raw
 
 
-def install(root, records, nix_hash):
+def install(root, records, nix_hash, git="git"):
     """Replace only a verified owned cache; rollback includes ownership bytes.
 
     All fetching and native runtime checks belong to the caller and precede
@@ -131,7 +132,7 @@ def install(root, records, nix_hash):
             regular_directory(source / ".git"),
             "verified checkout must carry real Git metadata",
         )
-    old_raw = existing_state(root, nix_hash)
+    old_raw = existing_state(root, nix_hash, git)
     cache = root / "Packages"
     build = root / ".build"
     private = build / "swiftpm-purifier"
@@ -157,10 +158,12 @@ def install(root, records, nix_hash):
                 hash_path(destination, nix_hash) == expected,
                 "owned copy changed verified Git/source bytes",
             )
-            hashes[destination.name] = expected
+            hashes[destination.name] = git_metadata.normalized_hash(
+                destination, nix_hash, git
+            )
         new_raw = (
             json.dumps(
-                {"version": 1, "packages": hashes},
+                {"version": 2, "packages": hashes},
                 sort_keys=True,
                 separators=(",", ":"),
             )
@@ -169,7 +172,7 @@ def install(root, records, nix_hash):
         # Recheck after potentially expensive copies; do not overwrite a
         # user's concurrent edit while preparing the transaction.
         require(
-            existing_state(root, nix_hash) == old_raw,
+            existing_state(root, nix_hash, git) == old_raw,
             "ownership state changed during staging",
         )
         protocol.native_absence(root)
@@ -207,10 +210,10 @@ def install(root, records, nix_hash):
             build.rmdir()
 
 
-def uninstall(root, nix_hash):
+def uninstall(root, nix_hash, git="git"):
     """Remove only the byte-verified owned cache and its ownership record."""
     root = protocol.layout.canonical(root)
-    old = existing_state(root, nix_hash)
+    old = existing_state(root, nix_hash, git)
     if old is None:
         return
     cache = root / "Packages"

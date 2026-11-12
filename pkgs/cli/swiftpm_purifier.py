@@ -1421,7 +1421,7 @@ def unlink(root: Path):
     so SwiftPM resolves and fetches the usual way."""
     if os.path.lexists(root / STATE_DIR / pre_workspace_install.STATE):
         try:
-            pre_workspace_install.uninstall(root, tool("nix-hash"))
+            pre_workspace_install.uninstall(root, tool("nix-hash"), tool("git"))
         except (pre_workspace.StateError, ValueError) as error:
             raise PurifierError(str(error)) from error
         return
@@ -1477,7 +1477,7 @@ def prefetch(root: Path):
             )
             validate_pre_workspace(root, lock_file.read_bytes())
             records = json.loads((tree / "pre-workspace-sources.json").read_text())
-            pre_workspace_install.install(root, records, tool("nix-hash"))
+            pre_workspace_install.install(root, records, tool("nix-hash"), tool("git"))
         except (
             pre_workspace.StateError,
             pre_workspace.layout.LayoutError,

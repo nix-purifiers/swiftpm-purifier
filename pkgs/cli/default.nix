@@ -123,6 +123,7 @@ stdenvNoCC.mkDerivation {
           --set SWIFTPM_PURIFIER_NIX_PREFETCH_GIT ${lib.getExe nix-prefetch-git} \
           --set SWIFTPM_PURIFIER_NIX ${lib.getExe nix} \
           --set SWIFTPM_PURIFIER_NIX_HASH ${nix}/bin/nix-hash \
+          --set SWIFTPM_PURIFIER_GIT ${git}/bin/git \
           --run 'source ${swiftEnvironment}'
       ''
     else
@@ -135,6 +136,7 @@ stdenvNoCC.mkDerivation {
           --set SWIFTPM_PURIFIER_NIX_PREFETCH_GIT ${lib.getExe nix-prefetch-git} \
           --set SWIFTPM_PURIFIER_NIX ${lib.getExe nix} \
           --set SWIFTPM_PURIFIER_NIX_HASH ${nix}/bin/nix-hash \
+          --set SWIFTPM_PURIFIER_GIT ${git}/bin/git \
           --suffix PATH : ${
             lib.makeBinPath [
               git

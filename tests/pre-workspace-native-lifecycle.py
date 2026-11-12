@@ -502,6 +502,17 @@ def main():
                 str(work / "git-confinement-controls"),
             ],
         )
+        run(
+            "git-index-controls",
+            [
+                sys.executable,
+                str(root / "tests/pre-workspace-index.py"),
+                "--tree",
+                str(data_tree),
+                "--output",
+                str(work / "git-index-controls"),
+            ],
+        )
         receipt["requestsAfterPrefetch"] = len(receipt["requests"])
     finally:
         server.shutdown()

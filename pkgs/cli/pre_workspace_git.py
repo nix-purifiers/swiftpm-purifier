@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import shutil
 import re
+import tempfile
 
 import bounded_native
 
@@ -41,6 +42,7 @@ def confine_git(source, environment=None):
     ):
         raise ValueError("self-contained real Git metadata directory required")
     root = source.resolve()
+    repositories = []
     for pointer in [
         source / ".git",
         *[path for path in source.rglob(".git") if path != source / ".git"],
@@ -66,6 +68,10 @@ def confine_git(source, environment=None):
             raise ValueError("Git metadata pointer escapes its owned checkout")
         if os.path.lexists(metadata / "commondir"):
             raise ValueError("shared Git common metadata is unsupported")
+        if os.path.lexists(metadata / "index.lock") or any(
+            path.name.startswith("sharedindex.") for path in metadata.iterdir()
+        ):
+            raise ValueError("locked or split Git indexes are unsupported")
         count = 0
         for item in metadata.rglob("*"):
             count += 1
@@ -79,16 +85,114 @@ def confine_git(source, environment=None):
                 and item.parent.parent.name == "objects"
             ):
                 raise ValueError("Git alternate object pointers are unsupported")
+        repositories.append((pointer.parent, metadata))
+    return repositories
 
 
-def command(argv):
+def command_raw(argv):
     result = bounded_native.run(argv, timeout=120, output_limit=8 * 1024 * 1024)
     if result.returncode:
         raise ValueError(
             "real Git/source verification command failed: "
             + result.stderr.decode(errors="replace")
         )
-    return result.stdout.decode().strip()
+    return result.stdout
+
+
+def command(argv):
+    return command_raw(argv).decode().strip()
+
+
+def validate_indices(source, git):
+    """Read actual index entries and flags without refreshing caller metadata."""
+    repositories = confine_git(source)
+    for repository, metadata in repositories:
+        index = metadata / "index"
+        if index.is_symlink() or not index.is_file():
+            raise ValueError("a regular complete Git index is required")
+        prefix = [
+            git,
+            "--no-optional-locks",
+            "-c",
+            "safe.directory=" + str(repository),
+            "-C",
+            str(repository),
+        ]
+        expected = {}
+        for record in command_raw(
+            [*prefix, "ls-tree", "-rz", "--full-tree", "HEAD"]
+        ).split(b"\0"):
+            if not record:
+                continue
+            header, path = record.split(b"\t", 1)
+            mode, kind, oid = header.split()
+            if (
+                mode not in (b"100644", b"100755", b"120000", b"160000")
+                or kind != (b"commit" if mode == b"160000" else b"blob")
+                or path in expected
+            ):
+                raise ValueError("unsupported Git tree entry")
+            expected[path] = (mode, oid)
+        actual = {}
+        for record in command_raw([*prefix, "ls-files", "--stage", "-z"]).split(b"\0"):
+            if not record:
+                continue
+            header, path = record.split(b"\t", 1)
+            mode, oid, stage = header.split()
+            if stage != b"0" or path in actual:
+                raise ValueError("unmerged or duplicate Git index entry")
+            actual[path] = (mode, oid)
+        if actual != expected:
+            raise ValueError("Git index entries differ from the verified HEAD tree")
+        raw = command_raw([*prefix, "ls-files", "--debug", "-z"])
+        stat_record = re.compile(
+            rb"  ctime: [0-9]+:[0-9]+\n  mtime: [0-9]+:[0-9]+\n  dev: [0-9]+\tino: [0-9]+\n  uid: [0-9]+\tgid: [0-9]+\n  size: [0-9]+\tflags: ([0-9a-fA-F]+)\n"
+        )
+        offset = 0
+        paths = []
+        while offset < len(raw):
+            end = raw.find(b"\0", offset)
+            if end < 0:
+                raise ValueError("unsupported Git index debug output")
+            paths.append(raw[offset:end])
+            match = stat_record.match(raw, end + 1)
+            if match is None or int(match[1], 16) != 0:
+                raise ValueError("unsupported Git index flags or metadata")
+            offset = match.end()
+        if paths != list(actual):
+            raise ValueError("Git index flag records disagree with index entries")
+    return repositories
+
+
+def initialize_indices(source, git):
+    """Construct real indexes from verified objects only in owned staging."""
+    for repository, metadata in confine_git(source):
+        command([git, "-C", str(repository), "read-tree", "HEAD"])
+    validate_indices(source, git)
+    for repository, metadata in confine_git(source):
+        if command_raw(
+            [git, "--no-optional-locks", "-C", str(repository), "status", "--porcelain"]
+        ):
+            raise ValueError("materialized Git checkout is not clean")
+
+
+def normalized_hash(source, nix_hash, git):
+    """Hash all bytes except exact validated metadata/index stat-cache files."""
+    source = Path(source)
+    indices = {
+        metadata / "index" for repository, metadata in validate_indices(source, git)
+    }
+    with tempfile.TemporaryDirectory(prefix="preworkspace-owned-hash-") as temporary:
+        plain = Path(temporary) / "checkout"
+        shutil.copytree(
+            source,
+            plain,
+            symlinks=True,
+            ignore=lambda directory, names: [
+                name for name in names if Path(directory) / name in indices
+            ],
+        )
+        return command([nix_hash, "--type", "sha256", str(plain)])
 
 
 def hex_hash(value):
@@ -151,6 +255,15 @@ def verify(source, output, revision, source_hash, metadata_hash, origin, git, ni
         != origin
     ):
         raise ValueError("actual Git origin was not restored")
+    initialize_indices(output, git)
+    materialized_plain = Path(os.environ["TMPDIR"]) / "materialized-plain"
+    shutil.copytree(
+        output, materialized_plain, symlinks=True, ignore=shutil.ignore_patterns(".git")
+    )
+    if command([nix_hash, "--type", "sha256", str(materialized_plain)]) != hex_hash(
+        source_hash
+    ):
+        raise ValueError("Git index construction changed the locked source NAR")
     receipt = {
         "revision": revision,
         "sourceHash": source_hash,

@@ -167,6 +167,7 @@ jobs:
             ${{ runner.temp }}/preworkspace-state/cold-objects
             ${{ runner.temp }}/preworkspace-state/owned-install-controls
             ${{ runner.temp }}/preworkspace-state/git-confinement-controls
+            ${{ runner.temp }}/preworkspace-state/git-index-controls
             ${{ runner.temp }}/preworkspace-state/fixture-before-capture
             ${{ runner.temp }}/preworkspace-state/leaf/Package.swift
             ${{ runner.temp }}/preworkspace-state/leaf/Sources
