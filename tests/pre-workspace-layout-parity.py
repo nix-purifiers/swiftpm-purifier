@@ -73,7 +73,7 @@ def run(
             else 'builtins.getEnv "LAYOUT_SOURCE"'
         )
         + "; in import "
-        + str(source / "nix/lib/pre-workspace-layout.nix")
+        + str(source / "lib-overlays/default/pre-workspace-layout.nix")
         + " {src=root;"
         + ('lockFile=builtins.getEnv "LAYOUT_LOCK";' if selected is not None else "")
         + "}"
@@ -82,7 +82,7 @@ def run(
         expression = (
             "let f=builtins.getFlake "
             + json.dumps(str(pure_flake))
-            + '; in import (f.outPath+"/nix/lib/pre-workspace-layout.nix") {src=f.outPath+"/tests/fixtures/pre-workspace-layout";'
+            + '; in import (f.outPath+"/lib-overlays/default/pre-workspace-layout.nix") {src=f.outPath+"/tests/fixtures/pre-workspace-layout";'
             + ('lockFile=f.outPath+"/flake.lock";' if selected is not None else "")
             + "}"
         )
@@ -95,7 +95,7 @@ def run(
             + ";};"
             'generated=pkgs.runCommand "preworkspace-generated-layout" {src=f.outPath+"/tests/fixtures/pre-workspace-layout";} '
             '\'\'mkdir -p "$out"; cp -R "$src/." "$out/"\'\';'
-            'in import (f.outPath+"/nix/lib/pre-workspace-layout.nix") {src=generated;'
+            'in import (f.outPath+"/lib-overlays/default/pre-workspace-layout.nix") {src=generated;'
             + ('lockFile=f.outPath+"/flake.lock";' if selected is not None else "")
             + "}"
         )

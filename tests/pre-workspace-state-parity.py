@@ -87,7 +87,7 @@ def check(
         env=dict(
             os.environ,
             PARITY_ROOT=str(root),
-            PARITY_READER=str(source / "nix/lib/pre-workspace-state.nix"),
+            PARITY_READER=str(source / "lib-overlays/default/pre-workspace-state.nix"),
             PARITY_OVERRIDE="yes" if override else "",
         ),
         timeout=30,
@@ -186,7 +186,10 @@ check("empty-directory-addition-stale", False)
 report["complete"] = True
 report["readerSha256"] = {
     name: hashlib.sha256((source / name).read_bytes()).hexdigest()
-    for name in ("pkgs/cli/pre_workspace.py", "nix/lib/pre-workspace-state.nix")
+    for name in (
+        "pkgs/cli/pre_workspace.py",
+        "lib-overlays/default/pre-workspace-state.nix",
+    )
 }
 save()
 print("PASS", len(report["cases"]), "production reader parity cases")
