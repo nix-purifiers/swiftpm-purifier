@@ -58,6 +58,36 @@ def recovery_needed(root, state):
     )
 
 
+def recovery_hint(root):
+    """Read-only discovery must not impose format8 policy on other projects.
+
+    This hint grants no path authority. A positive result is followed by the
+    canonical/private registry and full reservation checks before recovery.
+    """
+    root = Path(root)
+    if not root.exists():
+        return False
+    if os.path.lexists(root / JOURNAL) or any(
+        p.name.startswith(PREFIX)
+        and len(p.name) == len(PREFIX) + 64
+        and all(c in "0123456789abcdef" for c in p.name[len(PREFIX) :])
+        for p in root.iterdir()
+    ):
+        return True
+    parent = (
+        Path(os.environ["XDG_STATE_HOME"])
+        if os.environ.get("XDG_STATE_HOME")
+        else Path.home() / ".local/state"
+    )
+    state = parent / "swiftpm-purifier/dependencies-v1"
+    facts = root.stat()
+    key = digest(["root", [facts.st_dev, facts.st_ino]])
+    return any(
+        os.path.lexists(state / (key + suffix))
+        for suffix in (".json", ".pending", ".hold")
+    )
+
+
 def installation(guard):
     """Borrow the already-held root lock, without acquiring a second flock."""
     guard.check()

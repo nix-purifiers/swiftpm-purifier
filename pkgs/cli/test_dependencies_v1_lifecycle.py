@@ -60,6 +60,16 @@ class Lifecycle(unittest.TestCase):
         self.assertEqual(sentinel.read_bytes(), b"caller data")
         self.assertFalse((self.base / "state").exists())
 
+    def test_unlocked_project_does_not_adopt_format8_registry_policy(self):
+        (self.root / "swiftpm-purifier.lock.json").unlink()
+        physical = self.base / "physical-state"
+        physical.mkdir()
+        alias = self.base / "state-alias"
+        alias.symlink_to(physical, target_is_directory=True)
+        with patch.dict(os.environ, {"XDG_STATE_HOME": str(alias)}):
+            self.assertIsNone(cli.read_lock(self.root))
+        self.assertEqual(list(physical.iterdir()), [])
+
     def test_raw_native_dot_alias_refuses_before_project_native_command(self):
         raw = str(self.base) + "/./native.json"
         with (

@@ -107,6 +107,8 @@ def dependencies_v1_selections(root):
 
 
 def recover_dependencies_v1(root):
+    if not dependencies_v1_lifecycle.recovery_hint(root):
+        return
     state = dependencies_v1_lifecycle.registry(root, create=False)
     if dependencies_v1_lifecycle.recovery_needed(root, state):
         if sdk_mode():
