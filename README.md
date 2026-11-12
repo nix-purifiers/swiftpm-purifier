@@ -252,7 +252,9 @@ cache aside first. Repeated prefetch preserves unchanged owned bytes,
 and uninstall removes only verified owned dependencies. Actual Git
 constructs each checkout's index from its verified commit. Normal index
 stat-cache refreshes are accepted after checking index entries against
-the commit; staged content or mode changes are refused. Local commands
+the commit; staged content or mode changes are refused. Ownership travels
+with the dependency cache, so native build-artifact cleaning preserves it.
+Local commands
 keep the selected developer runtime. Format 7 has no SDK-bound capture
 mode; pure builds can explicitly select an immutable SDK separately.
 Older format 4, 5 and 6 readers reject format 7.

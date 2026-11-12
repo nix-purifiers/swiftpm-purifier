@@ -27,7 +27,7 @@ root.mkdir()
 (root / "Package.swift").write_text(
     'import PackageDescription\nlet package = Package(name: "Example")\n'
 )
-state = root / ".build/swiftpm-purifier" / install.STATE
+state = root / "Packages" / install.STATE
 report = {
     "complete": False,
     "scope": "Private production install component with actual verified-store Git trees; not CLI/native replay/cold support evidence",
@@ -69,18 +69,20 @@ assert not install.install(root, records, args.nix_hash)
 record("idempotent-unchanged-bytes")
 
 original_replace = install.os.replace
+original_read = Path.read_bytes
 failed = False
 
 
-def failing_replace(src, dst):
+def failing_replace(path):
     global failed
-    if Path(dst) == state and not failed:
+    raw = original_read(path)
+    if Path(path) == state and b'"packages":{}' in raw and not failed:
         failed = True
-        raise OSError("injected ownership replacement failure after cache replacement")
-    return original_replace(src, dst)
+        raise OSError("injected marker read failure after atomic cache replacement")
+    return raw
 
 
-with patch.object(install.os, "replace", failing_replace):
+with patch.object(Path, "read_bytes", failing_replace):
     rejects(
         "rollback-after-replacing-packages",
         lambda: install.install(root, [], args.nix_hash),
@@ -113,32 +115,37 @@ rejects(
     lambda: install.install(root, records + records, args.nix_hash),
 )
 assert install.install(root, [], args.nix_hash)
-assert list((root / "Packages").iterdir()) == []
+assert {path.name for path in (root / "Packages").iterdir()} == {install.STATE}
 record("owned-dependency-removal")
 assert install.install(root, records, args.nix_hash)
 record("owned-dependency-readdition")
 relocated = output / "relocated"
 root.rename(relocated)
 root = relocated
-state = root / ".build/swiftpm-purifier" / install.STATE
+state = root / "Packages" / install.STATE
 assert not install.install(root, records, args.nix_hash)
 record("relocated-ownership-idempotent")
 failed = False
 
 
-def failing_uninstall(src, dst):
+def failing_uninstall(path):
     global failed
-    if Path(src) == state and not failed:
+    path = Path(path)
+    if (
+        path.name == install.STATE
+        and path.parent.parent.name.startswith(".swiftpm-purifier-remove-")
+        and not failed
+    ):
         failed = True
-        raise OSError("injected uninstall state move failure after cache move")
-    return original_replace(src, dst)
+        raise OSError("injected marker read failure after atomic cache move")
+    return original_read(path)
 
 
-with patch.object(install.os, "replace", failing_uninstall):
+with patch.object(Path, "read_bytes", failing_uninstall):
     rejects("uninstall-rollback", lambda: install.uninstall(root, args.nix_hash))
 assert failed
 artifact = root / ".build/debug/user-artifact"
-artifact.parent.mkdir()
+artifact.parent.mkdir(parents=True)
 artifact.write_text("keep build outputs")
 install.uninstall(root, args.nix_hash)
 assert not (root / "Packages").exists() and not state.exists()

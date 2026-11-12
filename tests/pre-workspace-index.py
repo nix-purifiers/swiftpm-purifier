@@ -86,7 +86,7 @@ root.mkdir()
     'import PackageDescription\nlet package=Package(name:"Guard")\n'
 )
 assert installer.install(root, records, nix_hash, git)
-state = root / ".build/swiftpm-purifier" / installer.STATE
+state = root / "Packages" / installer.STATE
 original_state = state.read_bytes()
 assert json.loads(original_state)["version"] == 2
 checkout = root / records[0]["path"]
@@ -111,7 +111,7 @@ report["cases"].append(
 relocated = work / "relocated"
 root.rename(relocated)
 root = relocated
-state = root / ".build/swiftpm-purifier" / installer.STATE
+state = root / "Packages" / installer.STATE
 checkout = root / records[0]["path"]
 index = checkout / ".git/index"
 assert (
@@ -223,6 +223,30 @@ extra.unlink()
 state.write_text(json.dumps({"version": 1, "packages": {}}))
 reject("old-private-ownership-not-reinterpreted")
 state.write_bytes(original_state)
+for name, raw in (
+    ("marker-extra-field", original_state[:-2] + b',"extra":true}\n'),
+    ("marker-duplicate-field", original_state[:-2] + b',"version":2}\n'),
+    ("marker-edited-format", b" " + original_state),
+):
+    state.write_bytes(raw)
+    reject(name)
+state.unlink()
+reject("missing-marker")
+state.symlink_to(work / "absent-marker")
+reject("dangling-marker")
+state.unlink()
+external_marker = work / "outside-marker.json"
+external_marker.write_bytes(original_state)
+state.symlink_to(external_marker)
+reject("aliased-marker")
+assert external_marker.read_bytes() == original_state
+state.unlink()
+state.write_bytes(original_state)
+legacy = root / installer.LEGACY_STATE
+legacy.parent.mkdir(parents=True)
+legacy.write_bytes(original_state)
+reject("old-private-path-even-with-new-marker")
+legacy.unlink()
 assert not installer.install(root, records, nix_hash, git)
 report["complete"] = True
 report["sourceFiles"] = {

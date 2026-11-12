@@ -521,12 +521,13 @@ def main():
         receipt["originClosed"] = True
         save()
     for path in (project / "Packages").iterdir():
-        assert path.is_dir() and not path.is_symlink()
-        assert (path / ".git").is_dir()
+        if path.name != ".swiftpm-purifier-owned.json":
+            assert path.is_dir() and not path.is_symlink()
+            assert (path / ".git").is_dir()
     relocated = work / "relocated"
     shutil.move(str(project), relocated)
-    for label in ("build", "test", "run", "package"):
-        arguments = ["package", "clean"] if label == "package" else [label]
+    for label in ("build", "test", "run", "clean"):
+        arguments = ["build", "--clean"] if label == "clean" else [label]
         out = run(
             "relocated-" + label,
             [str(relocated / ".build/debug/OldApp")]
@@ -536,6 +537,8 @@ def main():
         )
         if label == "run":
             assert b"ANSWER|42|compiler3" in out
+    run("prefetch-after-native-clean", [cli, "prefetch"], relocated)
+    assert (relocated / "Packages/.swiftpm-purifier-owned.json").is_file()
     receipt["inputsAfterReplay"] = inputs(relocated)
     assert receipt["inputsAfterReplay"] == baseline
     if args.pure:
@@ -556,7 +559,8 @@ def main():
             timeout=1200,
         )
     for path in (relocated / "Packages").iterdir():
-        assert path.is_dir() and not path.is_symlink() and (path / ".git").is_dir()
+        if path.name != ".swiftpm-purifier-owned.json":
+            assert path.is_dir() and not path.is_symlink() and (path / ".git").is_dir()
     receipt.update(complete=True, inputsUnchanged=True, realOwnedGitProjection=True)
     save()
 

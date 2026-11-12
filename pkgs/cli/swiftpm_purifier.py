@@ -1419,7 +1419,9 @@ def recorded_links(root: Path) -> list:
 def unlink(root: Path):
     """Removes the links and the workspace state the interactive mode made,
     so SwiftPM resolves and fetches the usual way."""
-    if os.path.lexists(root / STATE_DIR / pre_workspace_install.STATE):
+    if os.path.lexists(
+        root / "Packages" / pre_workspace_install.STATE
+    ) or os.path.lexists(root / pre_workspace_install.LEGACY_STATE):
         try:
             pre_workspace_install.uninstall(root, tool("nix-hash"), tool("git"))
         except (pre_workspace.StateError, ValueError) as error:

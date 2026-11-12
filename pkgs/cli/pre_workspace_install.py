@@ -11,7 +11,8 @@ import tempfile
 import pre_workspace as protocol
 import pre_workspace_git as git_metadata
 
-STATE = "preworkspace-owned.json"
+STATE = ".swiftpm-purifier-owned.json"
+LEGACY_STATE = Path(".build/swiftpm-purifier/preworkspace-owned.json")
 
 
 def require(condition, message):
@@ -34,25 +35,26 @@ def existing_state(root, nix_hash, git="git"):
     cache = root / "Packages"
     build = root / ".build"
     private = build / "swiftpm-purifier"
-    state = private / STATE
-    for directory in (build, private):
+    for ancestor in (build, private):
         require(
-            not directory.is_symlink(), "owned metadata ancestors must not be symlinks"
+            not ancestor.is_symlink()
+            and (not os.path.lexists(ancestor) or ancestor.is_dir()),
+            "legacy ownership ancestor must be a real directory or absent",
         )
-        require(
-            not os.path.lexists(directory) or directory.is_dir(),
-            "owned metadata ancestor is not a directory",
-        )
-    if not os.path.lexists(state):
-        require(
-            not os.path.lexists(cache), "refusing an unowned native Packages directory"
-        )
-        return None
     require(
-        state.is_file() and not state.is_symlink(), "ownership state must be regular"
+        not os.path.lexists(root / LEGACY_STATE),
+        "old private build ownership records require explicit removal; no automatic migration",
+    )
+    state = cache / STATE
+    if not os.path.lexists(cache):
+        return None
+    require(regular_directory(cache), "native Packages must be a real directory")
+    require(os.path.lexists(state), "refusing an unowned native Packages directory")
+    require(
+        state.is_file() and not state.is_symlink(), "ownership marker must be regular"
     )
     raw = state.read_bytes()
-    require(len(raw) <= 1024 * 1024, "ownership state byte bound")
+    require(len(raw) <= 1024 * 1024, "ownership marker byte bound")
     old = protocol.plan.decode(raw.decode("utf-8"))
     require(
         isinstance(old, dict)
@@ -61,18 +63,21 @@ def existing_state(root, nix_hash, git="git"):
         and old["version"] == 2,
         "invalid ownership state",
     )
+    canonical = (json.dumps(old, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    require(raw == canonical, "ownership marker bytes are not canonical")
     require(isinstance(old["packages"], dict), "invalid owned packages map")
     require(
         regular_directory(cache),
         "owned native Packages directory is missing or replaced",
     )
     require(
-        set(old["packages"]) == {entry.name for entry in cache.iterdir()},
+        set(old["packages"]) | {STATE} == {entry.name for entry in cache.iterdir()},
         "owned checkout set is missing, stale, or has extra paths",
     )
     for name, digest in old["packages"].items():
         require(
             protocol.legacy.safe_name(name)
+            and name != STATE
             and isinstance(digest, str)
             and re.fullmatch("[0-9a-f]{64}", digest),
             "invalid owned checkout identity",
@@ -119,7 +124,10 @@ def install(root, records, nix_hash, git="git"):
             and protocol.legacy.version_valid(name[len(record["name"]) + 1 :]),
             "native cache path does not match its observed name/version",
         )
-        require(name not in destinations, "duplicate verified native cache path")
+        require(
+            name != STATE and name not in destinations,
+            "duplicate or reserved verified native cache path",
+        )
         destinations.add(name)
         source = Path(record["source"])
         require(
@@ -134,10 +142,6 @@ def install(root, records, nix_hash, git="git"):
         )
     old_raw = existing_state(root, nix_hash, git)
     cache = root / "Packages"
-    build = root / ".build"
-    private = build / "swiftpm-purifier"
-    state = private / STATE
-    build_existed, private_existed = build.exists(), private.exists()
     # A sibling transaction is on the destination filesystem and never
     # appears in the project's structural source inventory.
     transaction = Path(
@@ -146,7 +150,7 @@ def install(root, records, nix_hash, git="git"):
     staged = transaction / "Packages"
     backup = transaction / "previous-Packages"
     staged.mkdir()
-    moved_old = moved_new = state_replaced = False
+    moved_old = moved_new = False
     try:
         hashes = {}
         for record in records:
@@ -178,36 +182,25 @@ def install(root, records, nix_hash, git="git"):
         protocol.native_absence(root)
         if old_raw == new_raw:
             return False
-        private.mkdir(parents=True, exist_ok=True)
-        pending = transaction / "next-state"
-        pending.write_bytes(new_raw)
+        (staged / STATE).write_bytes(new_raw)
         if cache.exists():
             os.replace(cache, backup)
             moved_old = True
         os.replace(staged, cache)
         moved_new = True
-        os.replace(pending, state)
-        state_replaced = True
+        require(
+            (cache / STATE).read_bytes() == new_raw,
+            "ownership marker changed during installation",
+        )
         return True
     except BaseException:
         if moved_new:
             shutil.rmtree(cache)
         if moved_old:
             os.replace(backup, cache)
-        if state_replaced:
-            if old_raw is None:
-                state.unlink()
-            else:
-                rollback = transaction / "rollback-state"
-                rollback.write_bytes(old_raw)
-                os.replace(rollback, state)
         raise
     finally:
         shutil.rmtree(transaction)
-        if not private_existed and private.is_dir() and not any(private.iterdir()):
-            private.rmdir()
-        if not build_existed and build.is_dir() and not any(build.iterdir()):
-            build.rmdir()
 
 
 def uninstall(root, nix_hash, git="git"):
@@ -217,21 +210,21 @@ def uninstall(root, nix_hash, git="git"):
     if old is None:
         return
     cache = root / "Packages"
-    state = root / ".build/swiftpm-purifier" / STATE
     transaction = Path(
         tempfile.mkdtemp(prefix=".swiftpm-purifier-remove-", dir=root.parent)
     )
-    moved_cache = moved_state = False
+    backup = transaction / "Packages"
+    moved = False
     try:
-        os.replace(cache, transaction / "Packages")
-        moved_cache = True
-        os.replace(state, transaction / STATE)
-        moved_state = True
+        os.replace(cache, backup)
+        moved = True
+        require(
+            (backup / STATE).read_bytes() == old,
+            "ownership marker changed during uninstall",
+        )
     except BaseException:
-        if moved_cache:
-            os.replace(transaction / "Packages", cache)
-        if moved_state:
-            os.replace(transaction / STATE, state)
+        if moved:
+            os.replace(backup, cache)
         raise
     finally:
         shutil.rmtree(transaction)
