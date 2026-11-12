@@ -38,7 +38,7 @@ class NativeSession(common.NativeSession):
         self.save()
 
 
-def native_pins(raw, state):
+def native_pins(raw, state, allow_stale=False):
     """Bind native exact bytes semantically to actual checkout identities."""
     if raw is None:
         return
@@ -66,6 +66,16 @@ def native_pins(raw, state):
             isinstance(pin["package"], str) and pin["package"] not in actual,
             "native pin identity",
         )
+        checkout = pin["state"]
+        cache.require(
+            isinstance(checkout, dict)
+            and set(checkout) == {"branch", "revision", "version"}
+            and checkout["branch"] is None
+            and isinstance(checkout["revision"], str)
+            and protocol.legacy.REVISION.fullmatch(checkout["revision"]) is not None
+            and protocol.legacy.version_valid(checkout["version"]),
+            "native semantic pin checkout shape",
+        )
         actual[pin["package"]] = {"URL": pin["repositoryURL"], "state": pin["state"]}
     expected = {
         dep["name"]: {
@@ -74,7 +84,14 @@ def native_pins(raw, state):
         }
         for dep in state["object"]["dependencies"]
     }
-    cache.require(actual == expected, "native pin/checkouts identity join")
+    if allow_stale:
+        cache.require(
+            set(actual) == set(expected)
+            and all(actual[name]["URL"] == expected[name]["URL"] for name in actual),
+            "native selected pin/cache package identity join",
+        )
+    else:
+        cache.require(actual == expected, "native pin/checkouts identity join")
 
 
 def prepare(
@@ -101,7 +118,7 @@ def prepare(
         root, ".build/repositories/checkouts-state.json"
     )
     initial_state = cache.decode(initial_state_raw)
-    native_pins(pin.raw, initial_state)
+    native_pins(pin.raw, initial_state, allow_stale=True)
     package = temporary / root.name
     snapshot.snapshot(root, package, env)
     # Native pin projection is confined to the owned copy; the logical caller
@@ -344,3 +361,40 @@ def prepare(
     )
     session.save()
     return lock, selected_native, session
+
+
+def capture_and_publish(
+    root,
+    temporary,
+    api,
+    registry,
+    update=None,
+    native=selectors.DEFAULT,
+    portable=selectors.DEFAULT,
+):
+    """Recover before native observation, then publish the prepared file pair."""
+    from dependencies_v1_transaction import Transaction, canonical
+
+    cache.require(not api.sdk_mode(), "format8 SDK-bound CLI capture is unavailable")
+    with Transaction(root, registry, native, portable).locked() as transaction:
+        recovery = transaction.recover()
+        expected = transaction.pair()
+        lock, new_native, session = prepare(
+            root, temporary, api, update, native, portable
+        )
+        raw = canonical(lock) + b"\n"
+        protocol.decode(raw)
+        cache.require(
+            common.manifest_hash(root) == lock["manifestHash"]
+            and layout.source_layout(root, transaction.paths[1])["hash"]
+            == lock["sourceLayoutHash"],
+            "source currency changed before capture publication",
+        )
+        transaction.publish([new_native, raw], expected)
+        session.receipt.update(
+            publication="committed",
+            priorRecovery=recovery,
+            selectedPinSHA256=lock["nativeToolLock"]["sha256"],
+        )
+        session.save()
+        return lock, session

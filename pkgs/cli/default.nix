@@ -60,6 +60,7 @@ stdenvNoCC.mkDerivation {
       ./swiftpm_purifier.py
       ./bounded_native.py
       ./legacy_manifest.py
+      ./dependencies_v1_transaction.py
       ./dependencies_v1_capture.py
       ./dependencies_v1_manifest.py
       ./dependencies_v1_plan.py
@@ -77,6 +78,7 @@ stdenvNoCC.mkDerivation {
       ./native_sdk.py
       ./host_runtime.py
       ./test_dependencies_v1_selectors.py
+      ./test_dependencies_v1_transaction.py
       ./test_dependencies_v1_capture.py
       ./test_dependencies_v1_manifest.py
       ./test_dependencies_v1_cache.py
@@ -95,7 +97,7 @@ stdenvNoCC.mkDerivation {
   doCheck = true;
   checkPhase = ''
     runHook preCheck
-    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_swiftpm_purifier test_dependencies_v1 test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture)
+    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_swiftpm_purifier test_dependencies_v1 test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction)
     runHook postCheck
   '';
 
@@ -105,6 +107,7 @@ stdenvNoCC.mkDerivation {
     cp pkgs/cli/swiftpm_purifier.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/bounded_native.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/legacy_manifest.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v1_transaction.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_capture.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_manifest.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_plan.py $out/libexec/swiftpm-purifier/

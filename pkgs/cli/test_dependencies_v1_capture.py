@@ -82,6 +82,27 @@ class Capture(unittest.TestCase):
                 with self.assertRaises(cache.Reject):
                     capture.native_pins(json.dumps(value).encode(), self.state)
 
+    def test_valid_selected_pins_can_advance_a_stale_cache_before_resolution(self):
+        value = copy.deepcopy(self.native)
+        value["object"]["pins"][0]["state"].update(revision="b" * 40, version="1.1.0")
+        raw = json.dumps(value).encode()
+        capture.native_pins(raw, self.state, allow_stale=True)
+        with self.assertRaises(cache.Reject):
+            capture.native_pins(raw, self.state)
+        value["object"]["pins"][0]["state"]["branch"] = "main"
+        with self.assertRaises(cache.Reject):
+            capture.native_pins(
+                json.dumps(value).encode(), self.state, allow_stale=True
+            )
+        value["object"]["pins"][0]["state"]["branch"] = None
+        value["object"]["pins"][0]["repositoryURL"] = (
+            "https://example.invalid/Other.git"
+        )
+        with self.assertRaises(cache.Reject):
+            capture.native_pins(
+                json.dumps(value).encode(), self.state, allow_stale=True
+            )
+
     def test_sdk_bound_capture_refuses_before_source_or_tool_access(self):
         class API:
             @staticmethod
