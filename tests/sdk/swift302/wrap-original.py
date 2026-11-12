@@ -234,7 +234,7 @@ for tool in sorted(binary.iterdir()):
     header_search = ""
     if tool.name == "swift":
         header_search = (
-            'case "${0##*/}:${1-}" in swiftc:*|swift:-frontend) set -- '
+            'case "${0##*/}:${1-}" in swiftc:*|swift:-frontend) set -- "$@" '
             + " ".join(
                 map(
                     shlex.quote,
@@ -248,7 +248,7 @@ for tool in sorted(binary.iterdir()):
                     ],
                 )
             )
-            + ' "$@" ;; esac\n'
+            + " ;; esac\n"
         )
     tool.write_text(
         prefix
