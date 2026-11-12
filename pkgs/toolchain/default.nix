@@ -16,7 +16,10 @@
 let
   selectedCLI =
     if lib.isDerivation cli && cli ? override then
-      cli.override { inherit swiftPackages; }
+      cli.override {
+        inherit swiftPackages;
+        runtimeMode = "sdk";
+      }
     else
       throw "swiftpm-purifier: toolchain CLI has no source-owned SDK override recipe";
   swift = writeShellScriptBin "swift" ''

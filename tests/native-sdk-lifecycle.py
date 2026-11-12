@@ -197,7 +197,7 @@ def main():
                     "--json",
                     "--expr",
                     common
-                    + "pkgs.swiftpm-purifier.cli.override { inherit swiftPackages; }",
+                    + 'pkgs.swiftpm-purifier.cli.override { inherit swiftPackages; runtimeMode = "sdk"; }',
                 ],
                 timeout=1200,
             )
