@@ -11,6 +11,7 @@ them offline.
 
 import argparse
 import base64
+import functools
 import hashlib
 import json
 import os
@@ -22,8 +23,12 @@ import tempfile
 import urllib.parse
 from pathlib import Path
 
+import bounded_native
+import native_sdk
+
 LOCK_NAME = "swiftpm-purifier.lock.json"
-LOCK_VERSION = 4
+LOCK_VERSION = 5
+LEGACY_LOCK_VERSION = 4
 # The lockfile `--lockfile` names, or for the `swift` verb
 # SWIFTPM_PURIFIER_LOCKFILE; without either, the lockfile in the package.
 LOCK_OVERRIDE = os.environ.get("SWIFTPM_PURIFIER_LOCKFILE")
@@ -73,7 +78,11 @@ def content_hash(lock: dict) -> str:
     builtins.toJSON writes for it: keys in order and no spaces."""
     content = {key: value for key, value in lock.items() if key != "contentHash"}
     text = json.dumps(
-        content, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        content,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
     )
     return sri_sha256(hashlib.sha256(text.encode()).digest())
 
@@ -114,16 +123,81 @@ def manifest_hash(root: Path) -> str:
     ).hexdigest()
 
 
-def resolved_pins(resolved_file: Path) -> list:
+def resolved_pins(resolved_file: Path, legacy_identities=None) -> list:
     """The pins of a Package.resolved, which SwiftPM does not write for a
     package without remote dependencies."""
     resolved = read_json(resolved_file)
     if resolved is None:
         return []
+    if not isinstance(resolved, dict) or type(resolved.get("version")) is not int:
+        raise PurifierError(f"{resolved_file}: invalid native lock format")
+    if resolved.get("version") == 1:
+        body = resolved.get("object")
+        raw = body.get("pins") if isinstance(body, dict) else None
+        if not isinstance(raw, list):
+            raise PurifierError(f"{resolved_file}: invalid version-1 pins")
+        identities = legacy_identities or {}
+        pins = []
+        seen = set()
+        for pin in raw:
+            if not isinstance(pin, dict) or set(pin) != {
+                "package",
+                "repositoryURL",
+                "state",
+            }:
+                raise PurifierError(f"{resolved_file}: invalid version-1 pin")
+            name, location, state = pin["package"], pin["repositoryURL"], pin["state"]
+            if (
+                not isinstance(name, str)
+                or not name
+                or not isinstance(location, str)
+                or not location
+            ):
+                raise PurifierError(
+                    f"{resolved_file}: invalid version-1 package or location"
+                )
+            if (
+                not isinstance(state, dict)
+                or set(state) - {"branch", "revision", "version"}
+                or not isinstance(state.get("revision"), str)
+                or not re.fullmatch(r"[0-9a-f]{40}([0-9a-f]{24})?", state["revision"])
+                or any(
+                    state.get(key) is not None
+                    and (not isinstance(state[key], str) or not state[key])
+                    for key in ("branch", "version")
+                )
+                or (
+                    state.get("branch") is not None and state.get("version") is not None
+                )
+            ):
+                raise PurifierError(
+                    f"{resolved_file}: invalid version-1 checkout state"
+                )
+            identity = identities.get(location)
+            if not isinstance(identity, str) or not identity or identity in seen:
+                raise PurifierError(
+                    f"{resolved_file}: missing or ambiguous native identity for {location!r}"
+                )
+            seen.add(identity)
+            canonical_state = {
+                "branch": state.get("branch"),
+                "revision": state["revision"],
+                "version": state.get("version"),
+            }
+            pins.append(
+                {
+                    "identity": identity,
+                    "kind": "remote",
+                    "location": location,
+                    "state": canonical_state,
+                    "legacyPackage": name,
+                }
+            )
+        return pins
     if resolved.get("version") not in (2, 3):
         raise PurifierError(
             f"{resolved_file} has format version {resolved.get('version')}, "
-            "which predates Swift 5.6; run `swiftpm-purifier lock`"
+            "which swiftpm-purifier does not support"
         )
     return resolved["pins"]
 
@@ -136,8 +210,17 @@ def pinned_at(pin: dict) -> str:
 def is_current(root: Path, lock: dict) -> bool:
     """Whether the lockfile covers the pins of Package.resolved, as
     lock.nix checks, and the manifests the lock run saw."""
-    pins = resolved_pins(resolved_path(root))
     locked = lock.get("pins", {})
+    identities = {}
+    for identity, value in locked.items():
+        if "sourceLocation" in value:
+            location = value["sourceLocation"]
+            if location in identities:
+                raise PurifierError(
+                    "multiple locked native identities name the same source location"
+                )
+            identities[location] = identity
+    pins = resolved_pins(resolved_path(root), identities)
     return (
         sorted(pin["identity"] for pin in pins) == sorted(locked)
         and all(
@@ -149,6 +232,11 @@ def is_current(root: Path, lock: dict) -> bool:
             for pin in pins
         )
         and lock.get("manifestHash") == manifest_hash(root)
+        and all(
+            "legacyPackage" not in pin
+            or locked[pin["identity"]].get("name") == pin["legacyPackage"]
+            for pin in pins
+        )
     )
 
 
@@ -175,27 +263,156 @@ def output(command, **kwargs) -> str:
 # The lock run.
 
 
+@functools.lru_cache(maxsize=16)
+def native_options(command: str, subcommand="resolve"):
+    """Recognize options with the actual selected parser, without a package.
+
+    Version/help actions can ignore unknown options. A successful missing-
+    manifest control and a failing unknown-option control prevent that false
+    positive. No real package or dependency resolution is used for probes.
+    """
+    temporary = Path(tempfile.mkdtemp(prefix="swiftpm-purifier-probe-"))
+    logs = temporary / "logs"
+    logs.mkdir()
+    empty = temporary / "empty"
+    empty.mkdir()
+    if any((parent / "Package.swift").exists() for parent in empty.parents):
+        shutil.rmtree(temporary)
+        raise PurifierError("native option probes need TMPDIR outside a Swift package")
+    probes = [
+        [],
+        ["--purifier-option-that-does-not-exist"],
+        ["--disable-dependency-cache"],
+        ["--disable-repository-cache"],
+        ["--manifest-cache", "none"],
+        ["--disable-package-manifest-caching"],
+        ["--cache-path", str(temporary / "cache")],
+        ["--config-path", str(temporary / "config")],
+        ["--security-path", str(temporary / "security")],
+        ["--disable-experimental-prebuilts"],
+    ]
+    receipt = {"command": command, "probes": []}
+    recognized = set()
+
+    def save():
+        (temporary / "receipt.json").write_text(json.dumps(receipt, indent=2) + "\n")
+
+    try:
+        for index, arguments in enumerate(probes):
+            row = {"label": str(index)}
+            receipt["probes"].append(row)
+            result = bounded_native.run_recorded(
+                [command, *arguments, *([subcommand] if subcommand else [])],
+                record=row,
+                logs=logs,
+                save=save,
+                cwd=empty,
+                env=dict(
+                    os.environ,
+                    XDG_CACHE_HOME=str(temporary / "cache"),
+                    XDG_CONFIG_HOME=str(temporary / "config"),
+                ),
+                timeout=20,
+                output_limit=1024 * 1024,
+            )
+            error = result.stderr.decode(errors="replace").lower()
+            missing = any(
+                marker in error
+                for marker in (
+                    "could not find package.swift",
+                    "root manifest not found",
+                )
+            )
+            unknown = "unknown option" in error
+            if (
+                result.returncode == 0
+                or missing == unknown
+                or (index == 0 and not missing)
+                or (index == 1 and not unknown)
+            ):
+                raise PurifierError(
+                    "selected native parser did not establish an isolated option probe"
+                )
+            if arguments and missing:
+                recognized.add(arguments[0])
+    except Exception as error:
+        raise PurifierError(
+            f"native SDK option probe failed; retained raw evidence at {temporary}: {error}"
+        ) from error
+    shutil.rmtree(temporary)
+    return frozenset(recognized)
+
+
 def swiftpm_isolation(work: Path):
     """Flags that point SwiftPM's caches at empty directories in the lock
     run's directory. SwiftPM's configuration is a copy of the user
     configuration, so registries, mirrors and credentials still apply."""
+    options = native_options(tool("swift-package"), "resolve")
+    repository = next(
+        (
+            option
+            for option in ("--disable-dependency-cache", "--disable-repository-cache")
+            if option in options
+        ),
+        None,
+    )
+    manifest = (
+        ["--manifest-cache", "none"]
+        if "--manifest-cache" in options
+        else ["--disable-package-manifest-caching"]
+        if "--disable-package-manifest-caching" in options
+        else None
+    )
+    if not repository or not manifest or "--cache-path" not in options:
+        raise PurifierError(
+            "selected SwiftPM cannot provide the required isolated cache controls"
+        )
     config = work / "config"
     user_config = Path.home() / ".swiftpm" / "configuration"
     if user_config.is_dir():
         shutil.copytree(user_config, config)
     else:
         config.mkdir()
-    return [
-        "--disable-dependency-cache",
-        "--manifest-cache",
-        "none",
-        "--cache-path",
-        work / "cache",
-        "--config-path",
-        config,
-        "--security-path",
-        work / "security",
-    ]
+    flags = [repository, *manifest, "--cache-path", work / "cache"]
+    if "--config-path" in options:
+        flags += ["--config-path", config]
+    if "--security-path" in options:
+        flags += ["--security-path", work / "security"]
+    if "--disable-experimental-prebuilts" in options:
+        flags += ["--disable-experimental-prebuilts"]
+    return flags
+
+
+@functools.lru_cache(maxsize=8)
+def measured_native_sdk(path, nix):
+    descriptor = native_sdk.load_descriptor(path)
+    return native_sdk.measure(descriptor, nix, native_options, verify_active=False)
+
+
+def native_sdk_identity():
+    path = os.environ.get("SWIFTPM_PURIFIER_NATIVE_SDK")
+    if not path:
+        raise PurifierError(
+            "no source-owned selected SDK descriptor; build the CLI with the project's swiftPackages override"
+        )
+    try:
+        descriptor = native_sdk.load_descriptor(path)
+        native_sdk.check_bindings(descriptor)
+        identity = measured_native_sdk(path, tool("nix"))
+        native_sdk.check_active(identity)
+        return identity
+    except (native_sdk.SDKError, OSError, ValueError) as error:
+        raise PurifierError(str(error)) from error
+
+
+def require_native_sdk(lock):
+    if lock["version"] == LEGACY_LOCK_VERSION:
+        return
+    actual = native_sdk_identity()
+    if actual != lock["nativeSDK"]:
+        raise PurifierError(
+            "selected native SDK, compiler, environment, or physical closure differs from the lock; relock with the project's swiftPackages"
+        )
 
 
 def copy_package(root: Path, destination: Path):
@@ -247,11 +464,25 @@ def read_lock(root: Path):
         raise PurifierError(
             f"{path} lacks {', '.join(missing)}; run `swiftpm-purifier relock` to write it again"
         )
-    if lock["version"] != LOCK_VERSION:
+    if type(lock["version"]) is not int or lock["version"] not in (
+        LEGACY_LOCK_VERSION,
+        LOCK_VERSION,
+    ):
         raise PurifierError(
             f"{path} has lock format version {lock['version']}, and this swiftpm-purifier reads "
-            f"version {LOCK_VERSION}; run `swiftpm-purifier relock`"
+            f"versions {LEGACY_LOCK_VERSION} and {LOCK_VERSION}; run `swiftpm-purifier relock`"
         )
+    if lock["version"] == LOCK_VERSION:
+        if "nativeSDK" not in lock:
+            raise PurifierError(
+                f"{path} lacks nativeSDK; run `swiftpm-purifier relock`"
+            )
+        try:
+            native_sdk.validate_identity(lock["nativeSDK"])
+        except native_sdk.SDKError as error:
+            raise PurifierError(
+                f"{path}: {error}; run `swiftpm-purifier relock`"
+            ) from error
     if lock["contentHash"] != content_hash(lock):
         raise PurifierError(
             f"{path} does not match its contentHash, so it was changed after the lock run "
@@ -260,14 +491,18 @@ def read_lock(root: Path):
     return lock
 
 
-def mirrors(package: Path, config: Path) -> dict:
+def mirrors(package: Path, config: Path, legacy=False) -> dict:
     """SwiftPM's mirrors, original URL to mirror URL. The package
     configuration wins over the user configuration, as in SwiftPM."""
     result = {}
-    for source in (
+    sources = (
         config / "mirrors.json",
         package / ".swiftpm" / "configuration" / "mirrors.json",
-    ):
+    )
+    if legacy:
+        override = os.environ.get("SWIFTPM_MIRROR_CONFIG")
+        sources = (Path(override) if override else package / ".swiftpm" / "config",)
+    for source in sources:
         data = read_json(source) or {}
         for entry in data.get("object", []):
             result[entry["original"]] = entry["mirror"]
@@ -348,7 +583,10 @@ def record_of(pin: dict, name: str) -> dict:
     state = (
         {"name": "registryDownload", "version": pin["state"]["version"]}
         if registry
-        else {"name": "sourceControlCheckout", "checkoutState": pin["state"]}
+        else {
+            "name": "checkout" if pin["kind"] == "remote" else "sourceControlCheckout",
+            "checkoutState": pin["state"],
+        }
     )
     return {
         "basedOn": {
@@ -377,8 +615,12 @@ def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
             "build elsewhere could not fetch it. Depend on it by path (`.package(path:)`) "
             "inside the package, or by its remote URL."
         )
-    if kind not in ("remoteSourceControl", "registry"):
+    if kind not in ("remote", "remoteSourceControl", "registry"):
         raise PurifierError(f"{identity}: a pin of kind {kind!r} is not supported")
+    if "legacyPackage" in pin and pin["legacyPackage"] != ref["name"]:
+        raise PurifierError(
+            f"{identity}: version-1 package name disagrees with native workspace state"
+        )
     derived = record_of(pin, ref["name"])
     recorded = {
         "basedOn": dict(dependency, basedOn=None),
@@ -394,6 +636,10 @@ def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
             f"  recorded: {json.dumps(recorded['basedOn'], sort_keys=True)}"
         )
     locked = {"name": ref["name"]}
+    if kind == "remote":
+        # Version 1 stores the package name, not its native identity. Preserve
+        # the source-to-identity join instead of inventing URL case folding.
+        locked["sourceLocation"] = pin["location"]
     if kind == "registry":
         scope, _, name = identity.partition(".")
         known = registries(package, config)
@@ -408,7 +654,9 @@ def lock_pin(pin: dict, dependency: dict, package: Path, config: Path) -> dict:
         locked["hash"] = prefetch_file(locked["url"])
         return locked
     rev = pin["state"]["revision"]
-    url = mirrors(package, config).get(pin["location"], pin["location"])
+    url = mirrors(package, config, legacy=kind == "remote").get(
+        pin["location"], pin["location"]
+    )
     # The fetch URL is recorded only when a mirror replaces the location
     # that Package.resolved names.
     if url != pin["location"]:
@@ -436,7 +684,7 @@ def template(value, package: Path):
 def products(package: Path, env, isolation):
     description = json.loads(
         output(
-            [tool("swift"), "package", *isolation, "dump-package"], cwd=package, env=env
+            [tool("swift-package"), *isolation, "dump-package"], cwd=package, env=env
         )
     )
     result = []
@@ -453,6 +701,7 @@ def relock(root: Path, update=None):
     """Locks the package. SwiftPM resolves it, keeping the pins of
     Package.resolved; with `update`, a list of package identities, SwiftPM
     updates those packages first, or every package for an empty list."""
+    sdk_identity = native_sdk_identity()
     with tempfile.TemporaryDirectory(prefix="swiftpm-purifier-") as temporary:
         work = Path(temporary)
         # SwiftPM names the root package after its directory, and records
@@ -469,30 +718,40 @@ def relock(root: Path, update=None):
         isolation = swiftpm_isolation(work)
         print("swiftpm-purifier: resolving with an empty cache", file=sys.stderr)
         if update is None:
-            run([tool("swift"), "package", *isolation, "resolve"], cwd=package, env=env)
+            run([tool("swift-package"), *isolation, "resolve"], cwd=package, env=env)
         else:
             run(
-                [tool("swift"), "package", *isolation, "update", *update],
+                [tool("swift-package"), *isolation, "update", *update],
                 cwd=package,
                 env=env,
             )
 
         resolved = package / "Package.resolved"
-        if resolved.exists():
-            existing = resolved_path(root)
-            if not existing.exists() or existing.read_bytes() != resolved.read_bytes():
-                existing.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(resolved, existing)
-                print(f"swiftpm-purifier: wrote {existing}", file=sys.stderr)
+        resolved_bytes = resolved.read_bytes() if resolved.exists() else None
 
         state = json.loads((package / ".build" / "workspace-state.json").read_text())
         config = work / "config"
-        recorded = {
-            dependency["packageRef"]["identity"]: dependency
-            for dependency in state["object"]["dependencies"]
-        }
+        recorded = {}
+        for dependency in state["object"]["dependencies"]:
+            ref = (
+                dependency.get("packageRef", {}) if isinstance(dependency, dict) else {}
+            )
+            identity = ref.get("identity") if isinstance(ref, dict) else None
+            if not isinstance(identity, str) or not identity or identity in recorded:
+                raise PurifierError(
+                    "native workspace has a missing or duplicate package identity"
+                )
+            recorded[identity] = dependency
+        legacy_identities = {}
+        for identity, dependency in recorded.items():
+            ref = dependency["packageRef"]
+            if ref["kind"] == "remote":
+                location = ref["location"]
+                if location in legacy_identities:
+                    raise PurifierError("native workspace repeats a source location")
+                legacy_identities[location] = identity
         pins = {}
-        for pin in resolved_pins(package / "Package.resolved"):
+        for pin in resolved_pins(package / "Package.resolved", legacy_identities):
             dependency = recorded.pop(pin["identity"], None)
             if dependency is None:
                 raise PurifierError(
@@ -517,6 +776,7 @@ def relock(root: Path, update=None):
         package_products, package_name = products(package, env, isolation)
         lock = {
             "version": LOCK_VERSION,
+            "nativeSDK": sdk_identity,
             "package": package_name,
             "rootDirectory": root.name,
             "manifestHash": manifest_hash(root),
@@ -528,11 +788,29 @@ def relock(root: Path, update=None):
             "binaryTargets": template(state["object"].get("artifacts", []), package),
             "localDependencies": template(local, package),
         }
-    lock["contentHash"] = content_hash(lock)
+    # Validate and serialize both results before changing either user file.
+    # Native resolution may succeed while workspace validation, product
+    # inspection, or serialization still fails.
+    try:
+        lock["contentHash"] = content_hash(lock)
+        lock_bytes = (
+            json.dumps(
+                lock, indent=2, sort_keys=True, ensure_ascii=False, allow_nan=False
+            )
+            + "\n"
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise PurifierError(
+            f"native lock metadata cannot be serialized: {error}"
+        ) from error
+    if resolved_bytes is not None:
+        existing = resolved_path(root)
+        if not existing.exists() or existing.read_bytes() != resolved_bytes:
+            existing.parent.mkdir(parents=True, exist_ok=True)
+            existing.write_bytes(resolved_bytes)
+            print(f"swiftpm-purifier: wrote {existing}", file=sys.stderr)
     path = lock_path(root)
-    path.write_text(
-        json.dumps(lock, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-    )
+    path.write_bytes(lock_bytes)
     print(
         f"swiftpm-purifier: wrote {path} with {len(pins)} pins and "
         f"{len(lock['binaryTargets'])} binary targets",
@@ -547,7 +825,14 @@ def lock_command(root: Path, force: bool):
         # A lockfile that cannot be read is replaced.
         print(f"swiftpm-purifier: {error}", file=sys.stderr)
         lock = None
-    if lock and not force and is_current(root, lock):
+    if lock and not force and lock["version"] == LOCK_VERSION:
+        require_native_sdk(lock)
+    if (
+        lock
+        and not force
+        and lock["version"] == LOCK_VERSION
+        and is_current(root, lock)
+    ):
         print(f"swiftpm-purifier: {lock_path(root)} is up to date", file=sys.stderr)
         return
     relock(root)
@@ -578,10 +863,13 @@ def publish(root: Path, identity: str, version: str, registry):
     import urllib.request
 
     lock = read_lock(root)
+    if lock is not None:
+        require_native_sdk(lock)
     if lock is None or not is_current(root, lock):
         raise PurifierError(
             f"{lock_path(root)} is missing or out of date; run `swiftpm-purifier lock` first"
         )
+    native_sdk_identity()
     scope, dot, name = identity.partition(".")
     if not dot or not scope or not name:
         raise PurifierError(
@@ -595,8 +883,10 @@ def publish(root: Path, identity: str, version: str, registry):
                 f"no registry is configured for {identity}; pass --registry"
             )
     archive = nix_build(
-        f"""(pkgs.swiftpm-purifier.buildSwiftPMProject {{
+        f"""(pkgs.swiftpm-purifier.projectData {{
           src = /. + builtins.getEnv "SWIFTPM_PURIFIER_ROOT";
+          platform = selectedSDK.system;
+          inherit selectedSDK;
           {nix_lock_arguments(root)}
         }}).release""",
         nix_lock_environment(root),
@@ -630,16 +920,19 @@ def publish(root: Path, identity: str, version: str, registry):
 
 
 def nix_build(attribute: str, env: dict, out_link=None) -> str:
-    """Builds `attribute`, an expression over `pkgs` (the nixpkgs of
-    swiftpm-purifier's own flake with its overlay), so prefetch and
-    publishing use the builder a Nix build uses. `env` holds the values the
-    expression reads with builtins.getEnv."""
+    """Build source-owned data helpers over pkgs and the concrete SDK.
+
+    pkgs supplies fetch/archive utilities; it never selects a replacement
+    Swift SDK for the project's native commands.
+    """
     flake = os.environ.get(
         "SWIFTPM_PURIFIER_FLAKE", str(Path(__file__).resolve().parent.parent.parent)
     )
     expression = f"""
       let
-        flake = builtins.getFlake "path:{flake}";
+        flake = builtins.getFlake ("path:" + builtins.getEnv "SWIFTPM_PURIFIER_FLAKE_SOURCE");
+        selectedSDK = builtins.fromJSON (builtins.unsafeDiscardStringContext (builtins.readFile
+          (/. + builtins.getEnv "SWIFTPM_PURIFIER_NATIVE_SDK")));
         pkgs = import flake.inputs.nixpkgs {{
           system = builtins.currentSystem;
           overlays = [ flake.overlays.default ];
@@ -656,7 +949,9 @@ def nix_build(attribute: str, env: dict, out_link=None) -> str:
         expression,
     ]
     command += ["--out-link", out_link] if out_link else ["--no-link"]
-    return output(command, env=dict(os.environ, **env)).strip()
+    return output(
+        command, env=dict(os.environ, **env, SWIFTPM_PURIFIER_FLAKE_SOURCE=flake)
+    ).strip()
 
 
 def recorded_links(root: Path) -> list:
@@ -703,24 +998,67 @@ def prefetch(root: Path):
         raise PurifierError(
             f"{root} has no {LOCK_NAME}; run `swiftpm-purifier lock` first"
         )
+    require_native_sdk(lock)
     if not is_current(root, lock):
         raise PurifierError(
             f"{lock_file} is out of date with Package.swift or Package.resolved; "
             "run `swiftpm-purifier lock`"
         )
+    selected = native_sdk_identity()["descriptor"]
+    cli = os.environ.get("SWIFTPM_PURIFIER_CLI_ROOT")
+    try:
+        if native_sdk.store_root(cli) != cli:
+            raise native_sdk.SDKError(
+                "CLI is not an immutable installed store component"
+            )
+    except native_sdk.SDKError as error:
+        raise PurifierError(str(error)) from error
+    editor = None
+    editor_recipe = os.environ.get("SWIFTPM_PURIFIER_EDITOR_RECIPE")
+    if editor_recipe:
+        editor_output = os.environ["SWIFTPM_PURIFIER_EDITOR_OUTPUT"]
+        result = json.loads(
+            output(
+                [
+                    tool("nix"),
+                    "build",
+                    "--json",
+                    "--no-link",
+                    editor_recipe + "^" + editor_output,
+                ]
+            )
+        )
+        editor = os.environ["SWIFTPM_PURIFIER_EDITOR_PATH"]
+        if len(result) != 1 or result[0]["outputs"].get(editor_output) != editor:
+            raise PurifierError(
+                "selected editor derivation produced a different component"
+            )
     unlink(root)
     (root / STATE_DIR).mkdir(parents=True, exist_ok=True)
     gc_root = root / STATE_DIR / "tree"
     nix_build(
-        f"""(pkgs.swiftpm-purifier.buildSwiftPMProject {{
+        f"""(pkgs.swiftpm-purifier.projectData {{
           src = /. + builtins.getEnv "SWIFTPM_PURIFIER_ROOT";
+          platform = selectedSDK.system;
+          inherit selectedSDK;
           {nix_lock_arguments(root)}
         }}).tree""",
         nix_lock_environment(root),
         out_link=gc_root,
     )
     nix_build(
-        "pkgs.swiftpm-purifier.toolchain", {}, out_link=root / STATE_DIR / "toolchain"
+        'pkgs.swiftpm-purifier.retainedToolchain (builtins.fromJSON (builtins.getEnv "SWIFTPM_PURIFIER_RETAINED"))',
+        {
+            "SWIFTPM_PURIFIER_RETAINED": json.dumps(
+                {
+                    "cli": cli,
+                    "swift": selected["components"]["swift"]["path"],
+                    "swiftpm": selected["components"]["swiftpm"]["path"],
+                    "editor": editor,
+                }
+            )
+        },
+        out_link=root / STATE_DIR / "toolchain",
     )
     tree = gc_root.resolve()
     links = []
@@ -773,8 +1111,15 @@ def swift_command(arguments):
             file=sys.stderr,
         )
         os.execvp(swift, [swift, *arguments])
+    require_native_sdk(lock)
     if arguments and arguments[0] in BUILDING_SUBCOMMANDS:
-        arguments = [arguments[0], "--disable-experimental-prebuilts", *arguments[1:]]
+        native = tool("swift-" + arguments[0])
+        if "--disable-experimental-prebuilts" in native_options(native, None):
+            arguments = [
+                arguments[0],
+                "--disable-experimental-prebuilts",
+                *arguments[1:],
+            ]
     if arguments[:1] in ([], ["--version"], ["--help"]):
         os.execvp(swift, [swift, *arguments])
     if not is_current(root, lock):

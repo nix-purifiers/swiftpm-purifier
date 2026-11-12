@@ -174,6 +174,27 @@ The builder is a package for `callPackage` in that scope. It takes
 `swiftpm-purifier.overrideScope` replaces what everything in the scope
 shares.
 
+Select a project's compiler and SwiftPM together through the existing
+`swiftPackages` override. Use that same package set for
+`cli.override { inherit swiftPackages; }`,
+`toolchain.override { inherit swiftPackages; }`, and
+`buildSwiftPMProject.override { inherit swiftPackages; }`. The set supplies
+concrete `swift`, `swiftpm` and `stdenv` derivations; `sourcekit-lsp` is
+optional. The CLI keeps those components during prefetch and publish.
+
+New format 5 locks record the selected compiler, package manager, build
+environment, derivation recipes and physical runtime closure. A different
+SDK is rejected before native commands run; use `relock` with the intended
+package set to change it. These identities are specific to the host system.
+Projects using several SDK environments can keep separate external locks
+with `--lockfile`. Existing format 4 locks remain readable.
+
+Native `Package.resolved` formats 1, 2 and 3 are understood. For format 1,
+the native workspace supplies package identities; the purifier preserves
+the package names and source locations SwiftPM actually recorded. Native
+option probes select the cache controls and build options the chosen
+SwiftPM implements.
+
 `lib.swiftpm-purifier.readLock { src, lockFile ? ..., packageResolved ? ... }`
 gives the lock in memory of the purifier contract:
 `{ purifier, entries, outputs, problems }`. `problems` is empty for a usable

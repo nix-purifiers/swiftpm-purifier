@@ -1,0 +1,252 @@
+{
+  "capabilities": {
+    "build": [
+      "--cache-path",
+      "--config-path",
+      "--disable-package-manifest-caching",
+      "--disable-repository-cache",
+      "--manifest-cache"
+    ],
+    "package": [
+      "--cache-path",
+      "--config-path",
+      "--disable-package-manifest-caching",
+      "--disable-repository-cache",
+      "--manifest-cache"
+    ],
+    "run": [
+      "--cache-path",
+      "--config-path",
+      "--disable-package-manifest-caching",
+      "--disable-repository-cache",
+      "--manifest-cache"
+    ],
+    "test": [
+      "--cache-path",
+      "--config-path",
+      "--disable-package-manifest-caching",
+      "--disable-repository-cache",
+      "--manifest-cache"
+    ]
+  },
+  "closure": {
+    "/nix/store/00fs4zz9c0jjcvs62wg39b91dydz7zqb-libidn2-2.3.8": "sha256-AhKbCYdHqUpcwW9Bi6Ba0HHw6kIBI9PssbPafvFQx18=",
+    "/nix/store/013la2bf3dqkvvyxpyl4pgvx51d2jwnv-perl5.42.3-HTTP-Daemon-6.17": "sha256-XT/VTPhYFyIj7nGDmeIHkIPGFREKcp7m1Ak2FxX0Jqw=",
+    "/nix/store/0f9na660n2568sn5drb8r3p5aknxy5r8-perl5.42.3-libwww-perl-6.83": "sha256-yN6UUZ3VO7MaH3+QqaMqITQV88RlhnK805M63Pjaw64=",
+    "/nix/store/0qw79bk6jr2zfmv4j53dpgrrh2wznnzx-libxml2-2.13.9": "sha256-xg327LyAohZFLBhQr+8GxTEz7qbqY+pjukYzrqboJ38=",
+    "/nix/store/0y5xmdb7qfvimjwbq7ibg1xdgkgjwqng-no-broken-symlinks.sh": "sha256-1JWwvafXMkWBWP7fn+TdHLPAb1dy/YjStDYtG0VmNxM=",
+    "/nix/store/17215c0jn632z03h33fbwql4pdjb8bfi-mpfr-4.2.2": "sha256-OUmei9LPEqQQB6yd07dBHdElfc7VeMZSSA0bq/9DqLY=",
+    "/nix/store/2aw3zp99m9jc250ajl42rhaankp2kjav-nghttp2-1.70.0-lib": "sha256-yhKkXgo2jxrQz5JLv+NeC5g/U15n8BCbq7A1BGeBECA=",
+    "/nix/store/2b7h6rnav6a0s6npjk8y76f6rjs86lvw-ngtcp2-1.23.0": "sha256-MrL4Yg6TJfozCEG/mhA9HuI2OgWFG7rvgrhCXzfawPQ=",
+    "/nix/store/2l15gqrda27bvdh82bxrzipcsl68dnwk-libmpc-1.4.1": "sha256-NOAfV7GoSsKeZKb+NoPGmNif+EUFXHWvwKYhkTdGnZk=",
+    "/nix/store/2qpmak7162vhqxjwfik4aqs9lff6sn7w-file-5.48": "sha256-68icsY6a6+aYkTG5m9iTdHgdSN7oMtLXv6zOpyOIR4U=",
+    "/nix/store/30qgvhl60m3lpnj99l3xjprk776qg3ik-libxcrypt-4.5.2": "sha256-lsmzaSTLW96V6ZQrr6uaIquyUrKJDMJA7EAUWdXgwy8=",
+    "/nix/store/31r6mhxj6dhpvsgg330mchqnvdkipllm-perl5.42.3-Encode-Locale-1.05": "sha256-7FimsHCFNzc0G2nYNM8rXRLtm7eoGk58BzuPzvIWCDE=",
+    "/nix/store/3hk1ngk4hsk4s53v2s7sg096irdania4-acl-2.4.0": "sha256-wvKrJKDdclyQTLqNZVogEMOI3Iz5vIel8yMyXgczr6o=",
+    "/nix/store/3sj8msrsym648f35mk3gb3pp385hhk8r-gcc-16.2.0-libgcc": "sha256-xB1g+UeyanBZ3S05VeEvG92IAdkdo3pqjTY7aZsS5uI=",
+    "/nix/store/3xaspbv6nwvihmc3ybmlv0wjjksvpamq-xz-5.8.4": "sha256-luIIvBKBJ/eluR90BYa6l7CoRoPVggzssRdH9VqDpHQ=",
+    "/nix/store/3zlgjcfm8j3nscrldjv8izxciybg0nh3-glibc-2.44-57-dev": "sha256-ZNCyESa6e1BD2lazbmM1TIHlfTjCrXlPLffHZyNGpcg=",
+    "/nix/store/42in9mqs4kcmha55xd0i3ahbnibbzwkb-zlib-ng-2.3.3": "sha256-QD4sTWfToYVpuFj0L8hg+nyYIuPoavdeMde0MiUTho8=",
+    "/nix/store/45pnjysl42ch94rxmc0c2kd8y2hl6h9i-perl5.42.3-HTTP-Cookies-6.10": "sha256-qUunG3R2eCB5R1/yvmzqfQDOkt2eicXthjjtzNkIqLM=",
+    "/nix/store/53c7ak3cz6ann26k3x34h394adxdjjd8-perl5.42.3-Compress-Raw-Bzip2-2.218": "sha256-9uwYGulqBBgPBoRKAEcjUzYfeXUn3Vi1fnK/3JNN5n8=",
+    "/nix/store/5lwxnmrms4yppfbrnb2v47fbj604131k-perl5.42.3-Mozilla-CA-20230821": "sha256-2FYxGFz6XxiGIRKYNpZZY2UXIws+tEZI+LYKzFfSD2Q=",
+    "/nix/store/5yzw0vhkyszf2d179m0qfkgxmp5wjjx4-move-docs.sh": "sha256-LFXKr+/5UKMCEYyEpyotSs23Xr0Vwhzlv6YGyO/dqzI=",
+    "/nix/store/77d0rlxs1c4sx71ss06vnmfpjcd5mm22-ed-1.22.6": "sha256-DcFPO+C1UwSNl3JhgC8zcQMJN3Ur71WBbwVVlMaBdn4=",
+    "/nix/store/7a2cjhcgzyym5zaz6m4fksw47qvm150w-gcc-16.2.0-lib": "sha256-NY15ebdkUZiYoOSI9xJ7LBipHMJLBerHvZlxwTYU0zg=",
+    "/nix/store/7rks4wrl4567nmwd30pg507hbrp680wv-perl5.42.3-Compress-Raw-Zlib-2.222": "sha256-Nk92TCQoo8C1klQL9eV0m7VYWUqYicgpT6/yyXBZ01g=",
+    "/nix/store/7rx5im6jbgyfhrl0lc0kyxd9yf14rdxc-expat-2.9.0": "sha256-HQfkPwJUDVaJ06wYOhvqvHV6gh+VnJQ7p5t9YeC5E6Q=",
+    "/nix/store/85clx3b0xkdf58jn161iy80y5223ilbi-compress-man-pages.sh": "sha256-bjlqmt1KnFZ3MjGVNk+Zn4QCY09e4oIVW1vOb0kc3Ag=",
+    "/nix/store/86c5q81pmzq11lriiry3pazlb01gggww-perl5.42.3-Authen-SASL-2.2100": "sha256-0qz4d8tulITBfhZM4idyje3RKwuthNLdcZJDeIOaWlo=",
+    "/nix/store/89igyzp72y4ky0qyj4x5r52z84w203ki-strip.sh": "sha256-5nG7mrcZOwiVb9seAS0lL5nXfgnzanvMdorTGSWR6rw=",
+    "/nix/store/8qc02dniix9i7cz4arhzbibb5zksqymy-perl5.42.3-HTTP-Date-6.08": "sha256-+ByW//wjOn0A04OUxIidrFMwd8ZOQ2X+VAtDryOWLoI=",
+    "/nix/store/8qdw9shgr7dd3315jim8sfva2dnhq86c-gettext-1.0": "sha256-ErQ/KxAzMQiAmcP1RQppa73eS7rVRRV+X27rRVe/tMc=",
+    "/nix/store/8xz4d9wp4jy49mhl306wyg55096wis3p-gnumake-4.4.1": "sha256-lRpbG76VOKpHvgJ3HglYlyFFVFJLpp378Ts6HIX1VZ8=",
+    "/nix/store/99v13ig4382mngi6ggf0csqi7rfa04j5-findutils-4.11.0": "sha256-av4rdvAHkEM0sgOd8rMXjIjR8WQ/dTUVwkiZzzarxiE=",
+    "/nix/store/9drfa3mrps11k2169s62h354mpj86q7l-perl5.42.3-FCGI-0.82": "sha256-2S5G0Nro37YlHs9VUiFsIbFcmQ8AcXXp/GDdUwrdOyg=",
+    "/nix/store/9ika5s969fh9ayh4js9kd3j1n4lq8knq-unzip-6.0": "sha256-TioUdd64Nw1FygyvC5eF6MqrmzvGeJxSMtvuofY+KMI=",
+    "/nix/store/9mpja553cbkr2rc37kzdg8zbbg2dyyvl-diffutils-3.12": "sha256-p5ksFBFXHEymdO8ciL6wFjeaNvh22Gp027RCMrw1z5E=",
+    "/nix/store/9wc73n5izv0m7ppjbibi4hbr68rba1lj-gnused-4.10": "sha256-UauvUvY4wGwdWH6XGJ/P+YaWNgYaXRdQ/LXD/ghTmgg=",
+    "/nix/store/9ywrmani4xx0n9j96f6nx4gqk1q2k99b-perl5.42.3-MIME-Base32-1.303": "sha256-M562V64vYq25XD9AIYQBTzAmk/iCiFNg/QK0V1kSTOw=",
+    "/nix/store/a7jy06vpv6bhkrgm6hipn6px8pgfbnws-perl5.42.3-HTML-Tagset-3.20": "sha256-Rbf0XeTWdOqQ7OP6yuJpaiiQclPEMs0DHmWRo5u2rJ0=",
+    "/nix/store/ai2km55ba8bxrn64xx7p9lgvrrzdzv43-bzip2-1.0.8-bin": "sha256-C6+9w/XRiL+LJeC0rqAvSY5ilI48C9jG8LzKHAni8fE=",
+    "/nix/store/an9g93vg5b02j74y38zfajswa0f10p2z-stdenv-linux": "sha256-45KaDf0sa1o/BGke7Zepi+K79sZYwWfaoFSJGpsINwA=",
+    "/nix/store/b01kc8kdswrnfzlqpq0y3q9akijvn620-gnu-config-2024-01-01": "sha256-bEs+jJogn3RBkZ3KpP73/vG1x7ZFORxU4fFXC9HGg9A=",
+    "/nix/store/b8g0didzv422qhw67dh67wldkc9wkpdf-brotli-1.2.0-lib": "sha256-fMXDaasqxhHZ1FTeT5dfY2Yb1Rha/0mdExOeBcGZq9A=",
+    "/nix/store/bf61yikkg1xg2xsqghdiy1i8ypz9m9ls-perl5.42.3-TimeDate-2.33": "sha256-q5v9bmpWXXMWh5jBTwg+p1WrQXloRUz2BjrzjA8toh8=",
+    "/nix/store/bx7jdvkba26sy20ryr4l617qqmzj9hff-libunistring-1.4.2": "sha256-hTXroDuc+1L8tRw5lvnmzEnp0PIENcKwQp5IRJtT70A=",
+    "/nix/store/c3f45pxlb81gzz4w1nym7lpznfypva7s-gnugrep-3.12": "sha256-8pqtOevqoa8mMGccSAuxvPvn1Yl5Dv0+U6wvoetbch0=",
+    "/nix/store/c74icicyxl49zs706jhxf2f97dgw0big-perl5.42.3-Crypt-URandom-0.55": "sha256-eIAjeX/ZKsF2oHWySaTT3oqUEjJ4z7J6uyxQUwlzQUk=",
+    "/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12": "sha256-vyNum46RMANg8ZnC3M5f2spLTLTnpR8NuZLxeh6TtFU=",
+    "/nix/store/cickvswrvann041nqxb0rxilc46svw1n-prune-libtool-files.sh": "sha256-0DC4P4/oI7F2AJ/9K6MUMNP818Ol4i+fvpJt3D2HyJs=",
+    "/nix/store/cv1d7p48379km6a85h4zp6kr86brh32q-audit-tmpdir.sh": "sha256-GtEGPN4Le2tf2sgAKyRLpL3GoMHaZ1HFfYCgXVEv8Ko=",
+    "/nix/store/czcwl43cyddmgy8z67cbq2ag8avi73qx-perl5.42.3-Test-Needs-0.002010": "sha256-bofCv50SrRNUJP2C2Au0Eu/0H0oyW4Wbzx4HzydwC9o=",
+    "/nix/store/d2pxlphy1s0qcjafl9r23rwr73g8zpyj-linux-headers-7.2": "sha256-R5lMTUxEBw6UreD9PjmYiu2PbbP4aLr4LqawIAHwCUU=",
+    "/nix/store/d5jz315vxbphknfawsrjs192ci9bc6df-patch-2.8": "sha256-39ogHjK0/9ovQdKGyc1VNoeUxALS6ALtcxsdCDSaAnY=",
+    "/nix/store/dbg2yqnjnqqsln5li7wfsc5bg70avjxx-perl5.42.3-WWW-RobotRules-6.02": "sha256-v9Up57/gzMDffomlux4E7zmX88f3zaP10HkSTw963/0=",
+    "/nix/store/djf269aylbphr1ynvd52nh3dana5jh91-keyutils-1.6.3-lib": "sha256-Du4A2JUho0i7yno/oaOSdHwP3fzEcGXZ/ucLOMHnW98=",
+    "/nix/store/dl38pix4jvabi5smb9wywhp6pimmpva6-patchelf-0.19.2": "sha256-so4ZB/rNGvsLDG/GHNnbeOCQ9jSWjoy0MYq9MxR6E7E=",
+    "/nix/store/f5r77q40xh7rj30dfkajv8y6jwbf4xh2-zstd-1.5.7": "sha256-0NELtCI4mYA6lzfcorF/Bbqtu+7saJevv6M/nn1NhxQ=",
+    "/nix/store/fdnr93sypziw6z896s57qmgn2a3mpani-perl5.42.3-Try-Tiny-0.31": "sha256-eQiSaFni89y9nZ6up82cZRmp9bZOIYWke5uNxbxMYek=",
+    "/nix/store/fi98g122a3kzbschgvbvsqvpyxrmqvvl-binutils-wrapper-2.46": "sha256-+DkuAyGYI96fcWnk4496f2SrSKHar+xgMwgAhnYgY/g=",
+    "/nix/store/fq0lrn9lsg7qadvbc3hgclx6ijqrkprf-perl5.42.3-URI-5.36": "sha256-hdGc9TbMfndSOKubJo5gHVkmPMtQssqxQTqG5SdeSUQ=",
+    "/nix/store/frkfc5bylinm83zajl3wm03m214kkaks-perl5.42.3-File-Listing-6.16": "sha256-3QFWEpcle09GymwfWB1L9nf8X7a2sI/6khWx2IeSLv8=",
+    "/nix/store/fsrw69w5mx838p7xydbdvywhwl6wnbjw-tzdata-2026e": "sha256-cp9ZUJXOYW2GlXuFYhLHxxRVG88Xir/74uf4qalV5cA=",
+    "/nix/store/fyaryjvghbkpfnsyw97hb3lyb37s1pd6-move-lib64.sh": "sha256-SDQRJiS2AfWlONR8W8dEGuNPeLET7IuPLOm5vQBh2C0=",
+    "/nix/store/gw9cv5x21gfiy3afdn0848h25hk74jf4-perl5.42.3-LWP-MediaTypes-6.04": "sha256-SHauZDNEnvMX+s1L7wroSFDCkwUWJOWk0rDvEDbZonE=",
+    "/nix/store/gyycdbp1gz3fvf50fx80pv570y0cs0gp-perl5.42.3-Clone-0.46": "sha256-7bc+px3T9BcDSW3XWNEe+OONOFeg6CQf20trdxHvbWI=",
+    "/nix/store/h96s16mjssibkvk62pvmfm3lwfc3wnwp-gawk-5.4.1": "sha256-17oKXzXKaT+WzerKPwgW3IfefOzbQezc5+wUS6f18nU=",
+    "/nix/store/hslif2q3kfcw9lj9syl25hpm0y67v8da-perl5.42.3-Test-Fatal-0.017": "sha256-I8V1ZHh2r6GcfKatSLqvfZ7Ha4Y2fdCn3Uxz8mAbsss=",
+    "/nix/store/hy7qsmyk9nbhcylcxbsf2aapsx8c6khb-libssh2-1.11.1": "sha256-PmJV211Pp1GAhdTEOwTegX0TLOXN8n+D5mIPb03nzPg=",
+    "/nix/store/i68jrr4ixqmpb5dk5phddx7bnhlwqffs-mailcap-2.1.54": "sha256-/2pkdgHKodEDLknYROnuSN0F17m+BZ4AymO51vBpcvU=",
+    "/nix/store/ikw3fgpqk7zj582g0hxqf8hbbmgl2z39-perl5.42.3-HTTP-CookieJar-0.014": "sha256-Dz5qKZtO7X5Zh0v4Uxw2VNmVo7+kkypLOwXn4qSEuOc=",
+    "/nix/store/j64r0mf0yy7pvcbavlqidfnpsdnrldj2-glibc-2.44-57-bin": "sha256-D2SYG0VNvSDaoQRNFSpQWpV2796J/jT213sLP2rG0YI=",
+    "/nix/store/j9436i4mh2hlhnlqlk59fq5dc2sprs4i-readline-8.3p3": "sha256-9iRkymnBAOCsGETDObV1+SxNj23dBr59ZYwzrwKsZpo=",
+    "/nix/store/ji36842higmp6b06hbbpmzbd59g1c07c-zlib-1.3.2": "sha256-i55/+EqSyK5sXtGcxLXa0vzS4+2wkBlDwtJHEjOZRTY=",
+    "/nix/store/jkz7a5kgwa1h16d8hkhjqlgm0xy5bkhw-expand-response-params": "sha256-raj1dQaVadKsn5vLyoF8epLqDIX0PrdkFqbXh9hGhbU=",
+    "/nix/store/jsvghrcvyikk422yvr17g52qxscn5qg5-perl5.42.3-IO-Socket-SSL-2.083": "sha256-9O8BTxlDybOzs0PV1UT6Iq3gzGVUMMalzzRiLFKYPuI=",
+    "/nix/store/k1xcmhfmkpzcxlimqd8fpbi0xqxaxm2j-perl5.42.3-Net-SMTP-SSL-1.04": "sha256-VVOxIevKtty3Kw364P5F4VAIhA9zvia0g0RdNnWwaCw=",
+    "/nix/store/ka6nj2ppyjyn7s1xs9ibd1jpzdklx12y-libedit-20260508-3.1": "sha256-OSZoVBix1WD1twO3+RG5LOyOOvOp55xqGfLu4ZoiOQ0=",
+    "/nix/store/kd4xwxjpjxi71jkm6ka0np72if9rm3y0-move-sbin.sh": "sha256-exQDue2oXLDKVrh7CiPpj7WjA5qhZfskrLzpYkAFiy0=",
+    "/nix/store/kwyi4bq5s2qgwbhz6cs4gjy57c2zdxws-bash-interactive-5.3p20": "sha256-zNlMeOlxfvKTdd2JWQbXPXDxCFUaBEVLh2jkOQoUfTk=",
+    "/nix/store/lazac5vw20j0pyahzbaxz8z8hyf7m9zf-openssl-3.5.9": "sha256-VGwi+TMqSv0meh1BR7MJlSNbz5Q3Yz33RaoJHqJpd84=",
+    "/nix/store/m27950v147ga4008dr5xwnjq22ysr49q-publicsuffix-list-0-unstable-2026-09-02": "sha256-YKXVrvZDN96RuVZ0U0g9uxbjHcpnM1TZyxRgGkQbGwE=",
+    "/nix/store/m7677iiw5w36mqw5d7kzws7067qi6ry8-perl5.42.3-TermReadKey-2.38": "sha256-XCToBLB/+1W+345mYED0k7stAGUfY5LKU0dQf6cMw4I=",
+    "/nix/store/mb5kkl4yar0i9m20f6bglah9l7a28fcs-git-2.56.0-doc": "sha256-joiqZCGviBM8pY8oPElEwYdIEu5WoXpr3dcM3iAcBR8=",
+    "/nix/store/n318yf1q5vysgh2qn6fd1q8yjy9vmwvh-gnutar-1.35": "sha256-s/Cay5mClcURDFJZRdafzZ6HwEyQ2UkNXm1C2S9h/94=",
+    "/nix/store/ncpfrkxdi790dnky93p1dpvn50m7icaj-perl5.42.3-FCGI-ProcManager-0.28": "sha256-C5wchN3aaJrU/lck7MnEqY9ZXQg8J6K8LHsNlEByVHo=",
+    "/nix/store/nflpm51il93hxh2rba6dvz59kaff0i7v-xz-5.8.4-bin": "sha256-T6p+dZ+VQQDSoIR+ItmTOlsyvBvGo/dGzdZ5tv5BQtM=",
+    "/nix/store/njx84z0ra0xj8498l67y4yczhkg7wca7-libpsl-0.21.5": "sha256-JBHvunjHyUZWYD17ctfKjOzoWCb53O2S3bGihA6OFa0=",
+    "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20": "sha256-lXOsHNb1os/UAz+P8x+eR02qgE+qSRGTPwAHF9hClN0=",
+    "/nix/store/nrlcj9nncvchvk481zb3pg6df8gsj0pn-binutils-2.46-lib": "sha256-TuRaYnlOvPbQJu3PFWLct/9d8Q11/69U8vCGzIx1wRg=",
+    "/nix/store/p3l1a5y7nllfyrjn2krlwgcc3z0cd3fq-make-symlinks-relative.sh": "sha256-k5tloOeDGg4nsbolF2nQ8zSPuSOCJHmG/SnT48musDA=",
+    "/nix/store/p40lblcsw1qwzqja83rfdpq0l15w4xv7-nghttp3-1.18.0": "sha256-7SSddMIIIOO2iE7e2f3r+emx1CIfMoasWih1GSqDXec=",
+    "/nix/store/p5dwcn4wpyjmhnnzj6iwwwjynyc6yif0-pcre2-10.49": "sha256-zzSXI/BiPpsHVETZ4dd6fd9v4/RSSsDV5/9aR3Gmz54=",
+    "/nix/store/p9i1b7jgfj4fl5bx557jnwbdsafl434i-curl-8.22.0": "sha256-WV5zBJxY7+sYuSl2vi+6+KDQSKa4RZp7vwEeHfead8s=",
+    "/nix/store/pag6l61paj1dc9sv15l7bm5c17xn5kyk-move-systemd-user-units.sh": "sha256-ApvZCwlSSuSA6bGuBQGi+EIncpLHju2Uhro27Mb8wMA=",
+    "/nix/store/pf6ph2hr3p286qxdsl04jis0n4vcc0gi-perl5.42.3-HTTP-Negotiate-6.01": "sha256-kpeN5s3TyY8lyXKlMQIyDzLU3VkiHNmnsx7bbMBLa0Y=",
+    "/nix/store/pfav6492acf7d8m41lggwqghpprkq9di-gdbm-1.26-lib": "sha256-8PbkvSNM48JrBpMyDWKYgbtKYVKVUenKcvZPkBn0oFQ=",
+    "/nix/store/pfds9zw10xksh0zr7qplqg1lj9avs2gz-libffi-3.8.0": "sha256-uUS10j65llEADSyBcsMqBWVw4I1OdE29JzsYGfUH7iY=",
+    "/nix/store/pkkjnyk4z46n18fkyqwlg24p272apb69-xgcc-16.2.0-libgcc": "sha256-L5spLmHxo4zwWB8LQ5ZMgJqzfnjpt/GDVZ0nnobVmQk=",
+    "/nix/store/plix5s7ffq1fp9p8yhxj3adl0ah4hhqz-perl5.42.3-libnet-3.15": "sha256-ekDJUYBX7EZ65HKUfbTHUZrXRMqDrggCaizjO3eBQRU=",
+    "/nix/store/pnwvsvwppd1lsamcxmiw6g7fp1k1g2j0-attr-2.6.0": "sha256-sKqYWhHObZIdMNiFIN+AE4GlSmXiwFldeRMGTGXi0B4=",
+    "/nix/store/pqyiidz5mi73wv5f91d48s9plcqyj5bz-glibc-2.44-57": "sha256-vbneyMia3r6fPMNYX5wvLVdZ47Ws2tur3csaoOj2wPw=",
+    "/nix/store/pvhqwaydycmypa3hcfrr0lqmy8nhap0g-perl5.42.3-Net-HTTP-6.23": "sha256-V4ldb7fIRQ/7WVzYBJ+p8uXBVQclvFWoQq1J7Gd7ars=",
+    "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3": "sha256-yKOqdFYymF0W9l+kL8DUPuvc1Axl+vfY4z0wEI+CFDs=",
+    "/nix/store/qbvmi6qgfw0ipjvfndy9f6k69rnip42m-krb5-1.22.2-lib": "sha256-zNmyxVB/ZsHsespyfBd7+5OAeX/ecWidRNRB0VKpwqg=",
+    "/nix/store/qwzgw6wlb5ghsy3ph0x1p9mvf3mxwms5-mpdecimal-4.0.1": "sha256-aWBpAVmXFDwEvNgdFTgdrvF5JngUrZQEQmhGGFG3Gjw=",
+    "/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0": "sha256-0i6OxJD3pfWVifgpLKzBKF/U8yzvEByH0syOZwmP1UA=",
+    "/nix/store/r9nlzwasmr1hgcbrfzcp2b2cz33scij2-ncurses-6.6": "sha256-4PKlT5bPNk2sYy6y+chsjc6OT7Jm52Jm5HQJSuomIr8=",
+    "/nix/store/rab3bl91k7xksrdpdw69pcpkj6p1z78q-perl5.42.3-Net-SSLeay-1.92": "sha256-GhA/Sb9HqsUvAByNaVOOI0BZGio3abW1ryKs1T0izFU=",
+    "/nix/store/rcha0vx95xd6dxlwqmj3iqv79aqjwq1z-perl5.42.3-HTTP-Message-7.02": "sha256-PAI5piyvgcmhstbOVvZ6R01034oZXYhZ19qgOcGrs2w=",
+    "/nix/store/rpswfv0ff4wap9anx7k1224x2m94pfcc-gzip-1.15": "sha256-hGGtNIfqNL+rbznwTdJeCc9JQvSzk8TVrcrYmiaqdrQ=",
+    "/nix/store/sixp6a2yhv1rqyjvi4q0vkz85z8r0rnr-perl5.42.3-HTML-Parser-3.85": "sha256-VHE3Lah7Q4E39mDtlEPlGLemujfbdOKdIi2dJfdD0Ak=",
+    "/nix/store/spr79kzwpcsmfbvppf7br727bvn4gsdm-perl5.42.3-HTML-TagCloud-0.38": "sha256-r4y7L9SuAXwlSQ9Z2UeFGbSnDFhbQobaQB20FvCodpQ=",
+    "/nix/store/v730lk2kw7kwbvlvq60zjbznd462mgrq-gmp-6.3.0": "sha256-rGGXE5fuLtgPxKkaielpxAeoliy0ptROfY/vPEzfa1Q=",
+    "/nix/store/vs4bjcgq2r93adg875isf55hyn29dk09-gmp-with-cxx-6.3.0": "sha256-lhYeUmtWgotUCrTrOQrF8XVEAqG3JkTUFJ/pf4C5YqI=",
+    "/nix/store/wdpzk384a6p6rsiw3ph9iil8jc05l0l8-swiftpm-purifier-swift-environment": "sha256-sxT4yIQMK7CNxvyYDceWJ817ulyGax6GDgiJcABhZEU=",
+    "/nix/store/wf7d501qlfynh45147y25g9kww9z0a09-linux-headers-7.2": "sha256-R5lMTUxEBw6UreD9PjmYiu2PbbP4aLr4LqawIAHwCUU=",
+    "/nix/store/x5a9anjlhrsp9rmr1j2rdf1czlxlzxnk-perl5.42.3-Digest-HMAC-1.05": "sha256-jv3rmWVxs+tcvtmqAo1Zs/gUqFycDHJk4+x9E1jbAZo=",
+    "/nix/store/x8c40nfigps493a07sdr2pm5s9j1cdc0-patch-shebangs.sh": "sha256-Y+mTMb/qaZCpgiEEn+WlqfPOp7xeZhIPZttAN+9F/tI=",
+    "/nix/store/xahxrjs30p3mw0a42bqg9ikgkikskw8m-python3-3.14.8": "sha256-x9S4Um4PGl1u/p3F/IrU7NCssEu6qVKrGj6dFkeU/ks=",
+    "/nix/store/xgw813vgzl2q0696sq45adpj0xd690jq-git-2.56.0": "sha256-qc/LgZJe6JnNN2shfCTmlgrsXdbtoX4GzOK+g+qj/aE=",
+    "/nix/store/xpaz3fi6ibqxb9sla4gjlp0c82v566y8-gcc-16.2.0": "sha256-0yVnxBU/jQpyXuHFxpJQ1ANXmEWMrkuPcs+wpCWuBTM=",
+    "/nix/store/xrzzvmqkmx68f6yj1hy16gjvc1r2bmr8-sqlite-3.53.3": "sha256-jGFyGB4BlI8J5c5BZ+s42Qd3+x/ocuAS11Z0dJSs1U8=",
+    "/nix/store/xyff06pkhki3qy1ls77w10s0v79c9il0-reproducible-builds.sh": "sha256-9TquSNTf3+sENOwMmBFmniGPTzbIX9Sn2PFfuJ4i0UA=",
+    "/nix/store/y1gmkixqpkfwayj9iqxn3c8brm6zkn1m-perl-5.42.3": "sha256-gkNDK5UAuIMSSEjxgUPQ4vT/CR3II+baGPBgatQ+FwM=",
+    "/nix/store/y2fv5szkflkflgj2hws2mhlhr5bz7c7b-perl5.42.3-CGI-Fast-2.16": "sha256-dAZsiYhabj4rV9XryjK35AGbIqex84QbPzeY2YpCsH8=",
+    "/nix/store/y3q0hfq2n0jj0nkr6qpxap3dpkvla3j3-perl5.42.3-IO-Compress-2.221": "sha256-Xsde/pgNbFsOKvllU8o2zKt6gOtjMSHWgjj/EmZDqOM=",
+    "/nix/store/y42liys36jfaqdw19v6sff4rr1d309id-perl5.42.3-IO-HTML-1.004": "sha256-Q3BHp+kgo2h2E2J1Dsa/IGaA3Twm9QmtmXepEfHGKJc=",
+    "/nix/store/y6ri2r743ckh5kk160r461czl9n2f2wf-binutils-2.46": "sha256-NZrQ0uFnFsYLhVDGPy9asEdfB7tJReQjPNG0yllYb5Y=",
+    "/nix/store/yi5d8g9kma5bhskfjllrjypd5d2xhvl1-isl-0.20": "sha256-kEW03SY0EZcqHgxvFa/hu5Eo74+kvsPzKH0o/0Vr9HM=",
+    "/nix/store/yj2m2q5r6ncrb0hnm5w2xagvd7fvrhsj-update-autotools-gnu-config-scripts-hook": "sha256-1RF8/8DRNv4ZYyVibz93tPITyFEWLES1QL/2EyEmysE=",
+    "/nix/store/yxczdrywz8cj9fgpkllfv383smz54pgp-perl5.42.3-Test-RequiresInternet-0.05": "sha256-VsCJsS8Hl+P1jKRX9EjNvY1K3vxG7qktMpTW9FmMVzQ=",
+    "/nix/store/yzh0fbrlmkv6m2y6km6zn6mwnwdv51xf-multiple-outputs.sh": "sha256-TsTnFc2g28+nD+lP8i2yHOx3cljcjbFPHZUBFt/accQ=",
+    "/nix/store/z2pfix6anjs8j8nplw18zlhqm2g9jygj-perl5.42.3-CGI-4.59": "sha256-Zc74oQLOyZOAtjBq4lBHUUfYQ0FOdcV+TCImEB961mg=",
+    "/nix/store/z7k98578dfzi6l3hsvbivzm7hfqlk0zc-set-source-date-epoch-to-latest.sh": "sha256-O6Gjn5FQzTLFmOLmXU5J4i6ei4gvLK7fo6vA+C0lmn0=",
+    "/nix/store/zsvigijjqf64yym31xg8y8ab37q1bdkg-util-linux-minimal-2.42.4-lib": "sha256-M/XvT0RhPp3XLpEv/OheXfbEd1guKptIzw+MC5dV/fc=",
+    "/nix/store/zx4ag3v11v9rl0iqvg6vzbpflzlg0dk2-bzip2-1.0.8": "sha256-wiqY2BfkHTU/lqZDrzQF7gQ3GcIb1B6cpl0GHhrfPac="
+  },
+  "descriptor": {
+    "components": {
+      "environment": {
+        "path": "/nix/store/wdpzk384a6p6rsiw3ph9iil8jc05l0l8-swiftpm-purifier-swift-environment",
+        "recipe": "/nix/store/q5n33ipiigga944iicp14isa4bdjns5a-swiftpm-purifier-swift-environment.drv"
+      },
+      "stdenv": {
+        "path": "/nix/store/an9g93vg5b02j74y38zfajswa0f10p2z-stdenv-linux",
+        "recipe": "/nix/store/xdrsvc2g7gy2b6bf1qryl1nkdwz5zqgm-stdenv-linux.drv"
+      },
+      "swift": {
+        "path": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3",
+        "recipe": "/nix/store/m3pq39g2p190cb4da1vh68zd50l725bb-original-swift-sdk-5.5.3.drv"
+      },
+      "swiftpm": {
+        "path": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3",
+        "recipe": "/nix/store/m3pq39g2p190cb4da1vh68zd50l725bb-original-swift-sdk-5.5.3.drv"
+      }
+    },
+    "environmentShell": "/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin/bash",
+    "executables": {
+      "build": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-build",
+      "package": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-package",
+      "run": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-run",
+      "swift": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift",
+      "swiftc": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swiftc",
+      "test": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-test"
+    },
+    "system": "x86_64-linux",
+    "version": 1
+  },
+  "environment": {
+    "pathPrefix": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin:/nix/store/xgw813vgzl2q0696sq45adpj0xd690jq-git-2.56.0/bin:/nix/store/9ika5s969fh9ayh4js9kd3j1n4lq8knq-unzip-6.0/bin:/nix/store/dl38pix4jvabi5smb9wywhp6pimmpva6-patchelf-0.19.2/bin:/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0/bin:/nix/store/xpaz3fi6ibqxb9sla4gjlp0c82v566y8-gcc-16.2.0/bin:/nix/store/j64r0mf0yy7pvcbavlqidfnpsdnrldj2-glibc-2.44-57-bin/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/fi98g122a3kzbschgvbvsqvpyxrmqvvl-binutils-wrapper-2.46/bin:/nix/store/y6ri2r743ckh5kk160r461czl9n2f2wf-binutils-2.46/bin:/nix/store/cb987zkxvsv0490753ilrvn5yk7ylgxi-coreutils-9.12/bin:/nix/store/99v13ig4382mngi6ggf0csqi7rfa04j5-findutils-4.11.0/bin:/nix/store/9mpja553cbkr2rc37kzdg8zbbg2dyyvl-diffutils-3.12/bin:/nix/store/9wc73n5izv0m7ppjbibi4hbr68rba1lj-gnused-4.10/bin:/nix/store/c3f45pxlb81gzz4w1nym7lpznfypva7s-gnugrep-3.12/bin:/nix/store/h96s16mjssibkvk62pvmfm3lwfc3wnwp-gawk-5.4.1/bin:/nix/store/n318yf1q5vysgh2qn6fd1q8yjy9vmwvh-gnutar-1.35/bin:/nix/store/rpswfv0ff4wap9anx7k1224x2m94pfcc-gzip-1.15/bin:/nix/store/ai2km55ba8bxrn64xx7p9lgvrrzdzv43-bzip2-1.0.8-bin/bin:/nix/store/8xz4d9wp4jy49mhl306wyg55096wis3p-gnumake-4.4.1/bin:/nix/store/nnm9gdr70ihc6zc9298mzz8jpcgaciql-bash-5.3p20/bin:/nix/store/d5jz315vxbphknfawsrjs192ci9bc6df-patch-2.8/bin:/nix/store/nflpm51il93hxh2rba6dvz59kaff0i7v-xz-5.8.4-bin/bin:/nix/store/2qpmak7162vhqxjwfik4aqs9lff6sn7w-file-5.48/bin",
+    "variables": {
+      "NIX_BINTOOLS": "/nix/store/fi98g122a3kzbschgvbvsqvpyxrmqvvl-binutils-wrapper-2.46",
+      "NIX_BINTOOLS_WRAPPER_TARGET_HOST_x86_64_unknown_linux_gnu": "1",
+      "NIX_CC": "/nix/store/r5ri78axx1qggkjq3vawywlzglg70b5w-gcc-wrapper-16.2.0",
+      "NIX_CC_WRAPPER_TARGET_HOST_x86_64_unknown_linux_gnu": "1",
+      "NIX_CFLAGS_COMPILE": " -frandom-seed=wdpzk384a6 -isystem /nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/include -isystem /nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/include",
+      "NIX_ENFORCE_NO_NATIVE": "1",
+      "NIX_HARDENING_ENABLE": "bindnow format fortify fortify3 libcxxhardeningfast pic relro stackclashprotection stackprotector strictflexarrays1 strictoverflow zerocallusedregs",
+      "NIX_LDFLAGS": "  -L/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/lib -L/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/lib",
+      "NIX_NO_SELF_RPATH": "1",
+      "SWIFT_EXEC": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swiftc"
+    }
+  },
+  "executables": {
+    "build": {
+      "path": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-build",
+      "resolved": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-build",
+      "sha256": "181007a7ef08fe0e8cc8951cbf9cb285d2f0da38252b571244f133994058e73d"
+    },
+    "package": {
+      "path": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-package",
+      "resolved": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-package",
+      "sha256": "408ec3140aaa8f48f560c5065fef3a98e7d36c89032cf1593e2fae8a53b84e41"
+    },
+    "run": {
+      "path": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-run",
+      "resolved": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-run",
+      "sha256": "d4915f300ea966fe6c8a7f9864ea01e65ae0ffbb7bf70a62d2c9f67882bb3793"
+    },
+    "swift": {
+      "path": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift",
+      "resolved": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-frontend",
+      "sha256": "0d1b375715b63fa44eb64f211de951988e5cc821aa37dccaf1428c4f0957b09c"
+    },
+    "swiftc": {
+      "path": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swiftc",
+      "resolved": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-frontend",
+      "sha256": "0d1b375715b63fa44eb64f211de951988e5cc821aa37dccaf1428c4f0957b09c"
+    },
+    "test": {
+      "path": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-test",
+      "resolved": "/nix/store/pvxz02vdcgd35whm3lm14fk3vzmkk16q-original-swift-sdk-5.5.3/bin/swift-test",
+      "sha256": "9a131131529d9c759413798ec6a861a5b069b2e1b107997a519d02b009fc8cb7"
+    }
+  },
+  "version": 1,
+  "versions": {
+    "compiler": "Swift version 5.5.3 (swift-5.5.3-RELEASE)\nTarget: x86_64-unknown-linux-gnu",
+    "swiftpm": "Swift Package Manager - Swift 5.5.3"
+  }
+}

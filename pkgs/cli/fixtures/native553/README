@@ -1,0 +1,11 @@
+Original Swift 5.5.3 / SwiftPM 5.5.3 output, Linux x86_64.
+
+Captured by the original Ubuntu 20.04 release SDK from a fresh local HTTP
+Git origin. The original release archive has SHA-256
+68c69d7978ff90332580c5de489aff96df84bc0cf67d94ecef41f6848f68db91.
+The origin was closed before subsequent native build and XCTest runs.
+
+These are unmodified native format-1 and workspace-format-4 bytes. The
+ephemeral loopback URL is parser input, not an endpoint tests contact.
+Package name LegacyLeaf differs from native identity leaf, while the
+checkout subpath keeps the case Leaf. Readers must preserve that join.

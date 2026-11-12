@@ -86,7 +86,17 @@ let
     version:
     (import ../nix/lib/lock.nix {
       src = ./fixtures/hello;
-      lockFile = lockFileOf (rehash (helloLock // { inherit version; }));
+      lockFile = lockFileOf (
+        rehash (
+          helloLock
+          // {
+            inherit version;
+          }
+          // lib.optionalAttrs (version == 5) {
+            nativeSDK = builtins.fromJSON (builtins.readFile ../pkgs/cli/fixtures/native553/sdk-identity.json);
+          }
+        )
+      );
     }).lock.problems == [ ];
 
   # The hello fixture without its purifier lockfile, and without
@@ -270,6 +280,7 @@ in
   # lock.nix reads the version it supports and rejects any other.
   lock-version =
     assert readsVersion (import ../nix/lib/lock-version.nix);
+    assert readsVersion 4;
     assert !(readsVersion 0);
     runCommand "lock-version" { } "touch $out";
 }
