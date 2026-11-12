@@ -118,7 +118,8 @@ def main():
         save()
         assert result.returncode == expected, (
             label,
-            result.stderr[-3000:].decode(errors="replace"),
+            "stdout tail: " + result.stdout[-6000:].decode(errors="replace"),
+            "stderr tail: " + result.stderr[-6000:].decode(errors="replace"),
         )
         return result.stdout
 

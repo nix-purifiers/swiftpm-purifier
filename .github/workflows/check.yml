@@ -57,20 +57,17 @@ jobs:
           prefetch=$(cat "$RUNNER_TEMP/dependencies-v1-prefetch-prefix")
           cli=$(cat "$RUNNER_TEMP/dependencies-v1-cli-prefix")
           python3 tests/dependencies-v1-pure-native.py --transitive --runtime-prefix "$runtime" --nix-prefetch-git "$prefetch/bin/nix-prefetch-git" --cli "$cli/bin/swiftpm-purifier" --work "$RUNNER_TEMP/dependencies-v1-native"
+      - name: Package native state and product evidence
+        if: always()
+        run: python3 tests/dependencies-v1-pack-evidence.py --root "$RUNNER_TEMP"
       - name: Retain native state and product evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: dependencies-v1-swift403
           path: |
-            ${{ runner.temp }}/dependencies-v1-runtime-build.json
-            ${{ runner.temp }}/dependencies-v1-sdk-metadata
-            ${{ runner.temp }}/dependencies-v1-prefetch-prefix
-            ${{ runner.temp }}/dependencies-v1-cli-prefix
-            ${{ runner.temp }}/dependencies-v1-codec
-            ${{ runner.temp }}/dependencies-v1-layout
-            ${{ runner.temp }}/dependencies-v1-readers.json
-            ${{ runner.temp }}/dependencies-v1-native
+            ${{ runner.temp }}/dependencies-v1-evidence.tar.gz
+            ${{ runner.temp }}/dependencies-v1-evidence-manifest.json
   legacy-state-lifecycle:
     runs-on: ubuntu-latest
     timeout-minutes: 60
