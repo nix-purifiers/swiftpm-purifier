@@ -247,6 +247,26 @@ def is_current(root: Path, lock: dict) -> bool:
     )
 
 
+def legacy_local_path_valid(root: Path, portable: str) -> bool:
+    if not isinstance(portable, str) or not portable.startswith("@root@/"):
+        return False
+    parts = portable[len("@root@/") :].split("/")
+    current = root
+    valid = not any(part in ("", ".", "..") for part in parts)
+    for part in parts:
+        current = current / part
+        valid = valid and not current.is_symlink() and current.is_dir()
+    manifest = current / "Package.swift"
+    if not valid or manifest.is_symlink() or not manifest.is_file():
+        return False
+    try:
+        with manifest.open("rb") as stream:
+            stream.read(1)
+    except OSError:
+        return False
+    return True
+
+
 def legacy_state_lock_valid(root: Path, lock: dict) -> bool:
     try:
         resolved = read_json(resolved_path(root))
@@ -298,11 +318,7 @@ def legacy_state_lock_valid(root: Path, lock: dict) -> bool:
             or not ref["path"].startswith("@root@/")
         ):
             return False
-        parts = ref["path"][len("@root@/") :].split("/")
-        if (
-            any(part in ("", ".", "..") for part in parts)
-            or not (root.joinpath(*parts) / "Package.swift").is_file()
-        ):
+        if not legacy_local_path_valid(root, ref["path"]):
             return False
         names.append(ref["name"])
         identities.append(ref["identity"])
@@ -998,6 +1014,9 @@ def relock(root: Path, update=None):
                     not relative.parts
                     or ".." in relative.parts
                     or str(Path(ref["path"])) != ref["path"]
+                    or not legacy_local_path_valid(
+                        package, "@root@/" + relative.as_posix()
+                    )
                 ):
                     raise PurifierError(
                         "local package path is not a portable in-tree path"

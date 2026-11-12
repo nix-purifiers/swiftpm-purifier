@@ -1,5 +1,12 @@
 from pathlib import Path
-import copy, hashlib, importlib.util, json, os, shutil, sys
+import copy
+import hashlib
+import importlib.util
+import json
+import os
+import shutil
+import stat
+import sys
 import argparse
 
 parser = argparse.ArgumentParser(
@@ -77,10 +84,18 @@ cases += [
         False,
     ),
 ]
+filesystem_cases = (
+    "symlink-directory-escape",
+    "symlink-manifest-escape",
+    "directory-manifest",
+    "nested-symlink-escape",
+    "unreadable-manifest",
+)
+cases += [(name, None, False) for name in filesystem_cases]
 r = {
     "complete": False,
     "harnessSha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-    "scope": "Python/Nix strict local dependency-state2 reader controls from actual native4.2 record; malformed lock data only, no substituted SDK API",
+    "scope": "Python/Nix strict local dependency-state2 reader controls from actual native4.2 record; malformed data and actual filesystem controls, no substituted SDK API",
     "commands": [],
     "cases": [],
 }
@@ -100,6 +115,49 @@ for label, mutate, expected in cases:
     lock = copy.deepcopy(original)
     if mutate:
         mutate(lock)
+    filesystem = []
+    if label in filesystem_cases:
+        external = w / (label + "-external")
+        shutil.copytree(fixture / "Local", external)
+        manifest = p / "Local/Package.swift"
+        if label == "symlink-directory-escape":
+            shutil.rmtree(p / "Local")
+            (p / "Local").symlink_to(external, target_is_directory=True)
+        elif label == "symlink-manifest-escape":
+            manifest.unlink()
+            manifest.symlink_to(external / "Package.swift")
+        elif label == "directory-manifest":
+            manifest.unlink()
+            manifest.mkdir()
+        elif label == "nested-symlink-escape":
+            (p / "Container").mkdir()
+            (p / "Container/Local").symlink_to(external, target_is_directory=True)
+            lock["localDependencies"][0]["packageRef"]["path"] = (
+                "@root@/Container/Local"
+            )
+        elif label == "unreadable-manifest":
+            manifest.chmod(0)
+        current = p
+        parts = lock["localDependencies"][0]["packageRef"]["path"][
+            len("@root@/") :
+        ].split("/") + ["Package.swift"]
+        for part in parts:
+            current = current / part
+            info = current.lstat()
+            facts = {
+                "path": str(current.relative_to(p)),
+                "mode": stat.S_IMODE(info.st_mode),
+                "type": "symlink"
+                if current.is_symlink()
+                else "directory"
+                if current.is_dir()
+                else "file",
+            }
+            if current.is_symlink():
+                facts["target"] = os.readlink(current)
+            filesystem.append(facts)
+            if current.is_symlink():
+                break
     lock["contentHash"] = sp.content_hash(lock)
     (p / "swiftpm-purifier.lock.json").write_text(json.dumps(lock))
     try:
@@ -120,12 +178,15 @@ for label, mutate, expected in cases:
         output_limit=2 * 1024 * 1024,
     )
     nix = x.returncode == 0 and not json.loads(x.stdout)["problems"]
+    if label == "unreadable-manifest":
+        manifest.chmod(0o644)
     r["cases"].append(
         {
             "label": label,
             "pythonAccepted": python,
             "nixAccepted": nix,
             "expected": expected,
+            "filesystemBefore": filesystem,
         }
     )
     save()

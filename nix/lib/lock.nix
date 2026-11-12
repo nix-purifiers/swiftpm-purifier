@@ -204,6 +204,23 @@ let
         if builtins.isString (ref.path or null) then builtins.match "@root@/(.+)" ref.path else null;
       relative = if matched == null then "" else builtins.head matched;
       components = builtins.filter builtins.isString (builtins.split "/" relative);
+      directory =
+        builtins.foldl'
+          (
+            current: part:
+            let
+              entries = if current.valid then builtins.readDir current.path else { };
+            in
+            {
+              path = current.path + "/${part}";
+              valid = current.valid && (entries.${part} or null) == "directory";
+            }
+          )
+          {
+            path = src;
+            valid = true;
+          }
+          components;
     in
     builtins.isAttrs dependency
     &&
@@ -231,7 +248,9 @@ let
     && dependency.subpath == ref.identity
     && matched != null
     && builtins.all (part: part != "" && part != "." && part != "..") components
-    && builtins.pathExists (src + "/${relative}/Package.swift");
+    && directory.valid
+    && ((builtins.readDir directory.path)."Package.swift" or null) == "regular"
+    && builtins.isString (builtins.readFile (directory.path + "/Package.swift"));
 
   # The first problem in the order the checks depend on each other: a later
   # check reads what an earlier one verified.

@@ -2,6 +2,7 @@
 import hashlib
 import copy
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -62,6 +63,30 @@ class LegacyLocalState(unittest.TestCase):
                 lock["localDependencies"][0]["packageRef"][field] = value
                 with self.assertRaises(sp.PurifierError):
                     sp.is_current(self.fixture, lock)
+
+    def test_actual_symlink_and_directory_manifests_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            outside = base / "outside"
+            shutil.copytree(self.fixture / "Local", outside)
+            for kind in ("directory-link", "manifest-link", "directory-manifest"):
+                with self.subTest(kind=kind):
+                    root = base / kind
+                    shutil.copytree(self.fixture, root)
+                    manifest = root / "Local/Package.swift"
+                    if kind == "directory-link":
+                        shutil.rmtree(root / "Local")
+                        (root / "Local").symlink_to(outside, target_is_directory=True)
+                    elif kind == "manifest-link":
+                        manifest.unlink()
+                        manifest.symlink_to(outside / "Package.swift")
+                    else:
+                        manifest.unlink()
+                        manifest.mkdir()
+                    with self.assertRaises(sp.PurifierError):
+                        sp.is_current(
+                            root, json.loads((root / sp.LOCK_NAME).read_text())
+                        )
 
 
 class ManifestHash(unittest.TestCase):
