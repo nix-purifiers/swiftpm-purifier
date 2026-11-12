@@ -152,6 +152,8 @@ def product_view(explicit, graph, package_name):
             not isinstance(module, dict)
             or not isinstance(module.get("name"), str)
             or not module["name"]
+            or module["name"] in (".", "..")
+            or any(char in module["name"] for char in ("/", "\\", "\0"))
             or module["name"] in modules
             or type(module.get("is_test")) is not bool
             or module.get("type") not in ("library", "executable")

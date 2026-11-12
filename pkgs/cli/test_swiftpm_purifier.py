@@ -92,6 +92,15 @@ class LegacyManifestProtocol(unittest.TestCase):
             with self.assertRaises(lm.ManifestError):
                 lm.product_view([product], graph, "library")
 
+    def test_unsafe_implicit_product_names_rejected(self):
+        for name in ("../escape", "..", "a\\b", "bad\0name"):
+            graph = {
+                "name": "Project",
+                "modules": [{"name": name, "is_test": False, "type": "executable"}],
+            }
+            with self.subTest(name=name), self.assertRaises(lm.ManifestError):
+                lm.product_view([], graph, "Project")
+
     def test_duplicate_keys_and_non_json_constants_rejected(self):
         for raw in (b'{"name":1,"name":2}', b'{"version":NaN}'):
             with self.assertRaises(lm.ManifestError):
