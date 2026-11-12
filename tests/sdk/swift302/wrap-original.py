@@ -2,7 +2,8 @@
 
 ELF interpreter/runtime-path packaging may relocate loader tables. Allocated
 payloads must match except .interp, .dynstr, and verified .dynamic metadata.
-No Swift flags, SDK APIs, versions, or feature answers are edited.
+Only compiler header-search flags isolate the explicit test SDK from host
+headers. No SDK APIs, versions, or feature answers are edited.
 Each native tool retains argv[0], including swiftc and autolink dispatch.
 """
 
@@ -230,8 +231,28 @@ for tool in sorted(binary.iterdir()):
         "export CPATH=" + shlex.quote(headers) + "\n"
     )
     arguments = clang_arguments if tool.name == "clang-10" else []
+    header_search = ""
+    if tool.name == "swift":
+        header_search = (
+            'case "${0##*/}" in swift|swiftc) set -- '
+            + " ".join(
+                map(
+                    shlex.quote,
+                    [
+                        "-Xcc",
+                        "-nostdinc",
+                        "-Xcc",
+                        "-isystem",
+                        "-Xcc",
+                        str(root / "lib/swift/clang/include"),
+                    ],
+                )
+            )
+            + ' "$@" ;; esac\n'
+        )
     tool.write_text(
         prefix
+        + header_search
         + 'exec -a "$0" '
         + shlex.quote(str(raw))
         + " "
