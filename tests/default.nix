@@ -117,6 +117,7 @@ let
 in
 {
   dependencies-v3-codec = (import ./dependencies-v3.nix { inherit pkgs; }).test;
+  workspace-v4-path-codec = (import ./workspace-v4-path.nix { inherit pkgs; }).test;
   native-projections = import ./native-projections.nix {
     inherit pkgs;
     build = build;

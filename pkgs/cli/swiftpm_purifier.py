@@ -42,6 +42,9 @@ import dependencies_v1_selectors
 import dependencies_v3
 import dependencies_v3_lifecycle
 import dependencies_v3_ownership
+import workspace_v4_path
+import workspace_v4_path_lifecycle
+import workspace_v4_path_ownership
 
 LOCK_NAME = "swiftpm-purifier.lock.json"
 LOCK_VERSION = 5
@@ -204,12 +207,22 @@ def relock_dependencies_v1(root, update=None):
     return lock
 
 
-def validate_dependencies_v3(root, raw):
+def path_lifecycle(version):
+    if version == dependencies_v3.FORMAT:
+        return dependencies_v3_lifecycle
+    if version == workspace_v4_path.FORMAT:
+        return workspace_v4_path_lifecycle
+    raise PurifierError("unknown native path protocol")
+
+
+def validate_dependencies_v3(root, raw, version=dependencies_v3.FORMAT):
     if sdk_mode():
-        raise PurifierError("portable format 9 has no SDK-bound CLI runtime contract")
+        raise PurifierError(
+            f"portable format {version} has no SDK-bound CLI runtime contract"
+        )
     try:
         native, portable = dependencies_v1_selections(root)
-        return dependencies_v3_lifecycle.validate_source(root, raw, native, portable)
+        return path_lifecycle(version).validate_source(root, raw, native, portable)
     except (ValueError, OSError) as error:
         raise PurifierError(str(error)) from error
 
@@ -230,7 +243,7 @@ def dependencies_v3_sources(root, lock):
     dependencies_v1_cache.require(
         {p.name for p in packages.iterdir()}
         == {pin["name"] for pin in lock["pins"].values()},
-        "realized format9 dependency set",
+        "realized native path dependency set",
     )
     result = {}
     for identity, pin in lock["pins"].items():
@@ -240,13 +253,15 @@ def dependencies_v3_sources(root, lock):
     return result
 
 
-def relock_dependencies_v3(root, update=None):
+def relock_dependencies_v3(root, update=None, version=dependencies_v3.FORMAT):
     if sdk_mode():
-        raise PurifierError("portable format 9 has no SDK-bound CLI capture contract")
+        raise PurifierError(
+            f"portable format {version} has no SDK-bound CLI capture contract"
+        )
     native, portable = dependencies_v1_selections(root)
     state = dependencies_v1_lifecycle.registry(root)
     with tempfile.TemporaryDirectory(prefix="native3-capture-", dir=state) as temporary:
-        lock, session = dependencies_v3_lifecycle.capture_and_publish(
+        lock, session = path_lifecycle(version).capture_and_publish(
             root,
             Path(temporary),
             sys.modules[__name__],
@@ -441,8 +456,8 @@ def is_current(root: Path, lock: dict) -> bool:
     """Whether the lockfile covers the pins of Package.resolved, as
     lock.nix checks, and the manifests the lock run saw."""
     refuse_mixed_dependency_state3(lock)
-    if lock.get("version") == dependencies_v3.FORMAT:
-        validate_dependencies_v3(root, lock_path(root).read_bytes())
+    if lock.get("version") in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT):
+        validate_dependencies_v3(root, lock_path(root).read_bytes(), lock["version"])
         return True
     if lock.get("version") == 8:
         validate_dependencies_v1(root, lock_path(root).read_bytes())
@@ -630,15 +645,15 @@ def observe_pre_workspace_runtime():
 
 
 def require_runtime(root, lock):
-    if lock["version"] == dependencies_v3.FORMAT:
-        validate_dependencies_v3(root, lock_path(root).read_bytes())
+    if lock["version"] in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT):
+        validate_dependencies_v3(root, lock_path(root).read_bytes(), lock["version"])
         native, portable = dependencies_v1_selections(root)
         state = dependencies_v1_lifecycle.registry(root)
         sources = dependencies_v3_sources(root, lock)
         with tempfile.TemporaryDirectory(
             prefix="native3-runtime-", dir=state
         ) as temporary:
-            return dependencies_v3_lifecycle.runtime(
+            return path_lifecycle(lock["version"]).runtime(
                 root,
                 lock,
                 dependencies_v1_selectors.select(root, native).raw,
@@ -968,9 +983,9 @@ def read_lock(root: Path):
     if (
         isinstance(lock, dict)
         and type(lock.get("version")) is int
-        and lock["version"] == dependencies_v3.FORMAT
+        and lock["version"] in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT)
     ):
-        return validate_dependencies_v3(root, path.read_bytes())
+        return validate_dependencies_v3(root, path.read_bytes(), lock["version"])
     if (
         isinstance(lock, dict)
         and type(lock.get("version")) is int
@@ -999,7 +1014,7 @@ def read_lock(root: Path):
     ):
         raise PurifierError(
             f"{path} has lock format version {lock['version']}, and this swiftpm-purifier reads "
-            f"versions {LEGACY_LOCK_VERSION}, {LOCK_VERSION}, {legacy_state.FORMAT}, {pre_workspace.FORMAT}, 8 and {dependencies_v3.FORMAT}; run `swiftpm-purifier relock`"
+            f"versions {LEGACY_LOCK_VERSION}, {LOCK_VERSION}, {legacy_state.FORMAT}, {pre_workspace.FORMAT}, 8, {dependencies_v3.FORMAT} and {workspace_v4_path.FORMAT}; run `swiftpm-purifier relock`"
         )
     if lock["version"] == legacy_state.FORMAT:
         try:
@@ -1284,6 +1299,34 @@ def product_description(description):
     return result, description["name"]
 
 
+def workspace_path_candidate(value):
+    if (
+        not isinstance(value, dict)
+        or type(value.get("version")) is not int
+        or value["version"] != 4
+    ):
+        return False
+    body = value.get("object")
+    if (
+        not isinstance(body, dict)
+        or not isinstance(body.get("dependencies"), list)
+        or not body["dependencies"]
+    ):
+        return False
+    refs = [
+        record.get("packageRef") if isinstance(record, dict) else None
+        for record in body["dependencies"]
+    ]
+    path_refs = [isinstance(ref, dict) and "path" in ref for ref in refs]
+    if not any(path_refs):
+        return False
+    try:
+        workspace_v4_path.native_index(value, allow_edited=True, physical_locals=False)
+    except (ValueError, OSError) as error:
+        raise PurifierError(str(error)) from error
+    return True
+
+
 def relock(root: Path, update=None):
     """Locks the package. SwiftPM resolves it, keeping the pins of
     Package.resolved; with `update`, a list of package identities, SwiftPM
@@ -1299,6 +1342,19 @@ def relock(root: Path, update=None):
         and existing["version"] == dependencies_v3.FORMAT
     ) or os.path.lexists(root / "Packages" / dependencies_v3_ownership.MARKER):
         return relock_dependencies_v3(root, update)
+    if (
+        isinstance(existing, dict)
+        and type(existing.get("version")) is int
+        and existing["version"] == workspace_v4_path.FORMAT
+    ) or os.path.lexists(root / "Packages" / workspace_v4_path_ownership.MARKER):
+        return relock_dependencies_v3(root, update, workspace_v4_path.FORMAT)
+    workspace_path = root / ".build/workspace-state.json"
+    if os.path.lexists(workspace_path):
+        value = dependencies_v1_cache.decode(
+            dependencies_v1_cache.regular_bytes(root, ".build/workspace-state.json")
+        )
+        if workspace_path_candidate(value):
+            return relock_dependencies_v3(root, update, workspace_v4_path.FORMAT)
     native_state = root / ".build/dependencies-state.json"
     if (
         isinstance(existing, dict)
@@ -1427,6 +1483,8 @@ def relock(root: Path, update=None):
                         "SwiftPM did not produce a recognized dependency-state file"
                     )
         state = json.loads(state_path.read_text())
+        if workspace_path_candidate(state):
+            return relock_dependencies_v3(root, update, workspace_v4_path.FORMAT)
         if state.get("version") == 1:
             if override_legacy is False:
                 raise PurifierError(
@@ -1600,7 +1658,13 @@ def lock_command(root: Path, force: bool):
             lock["version"]
             if lock
             and lock["version"]
-            in (legacy_state.FORMAT, pre_workspace.FORMAT, 8, dependencies_v3.FORMAT)
+            in (
+                legacy_state.FORMAT,
+                pre_workspace.FORMAT,
+                8,
+                dependencies_v3.FORMAT,
+                workspace_v4_path.FORMAT,
+            )
             else LEGACY_LOCK_VERSION
         )
     )
@@ -1748,6 +1812,22 @@ def unlink(root: Path):
         portable_value = read_json(lock_path(root))
     except (ValueError, OSError):
         portable_value = None
+    if os.path.lexists(root / "Packages" / workspace_v4_path_ownership.MARKER) or (
+        isinstance(portable_value, dict)
+        and type(portable_value.get("version")) is int
+        and portable_value["version"] == workspace_v4_path.FORMAT
+    ):
+        if sdk_mode():
+            raise PurifierError("portable format 10 has no SDK-bound CLI lifecycle")
+        native, portable = dependencies_v1_selections(root)
+        workspace_v4_path_lifecycle.uninstall(
+            root,
+            dependencies_v1_hash,
+            dependencies_v1_lifecycle.registry(root),
+            native,
+            portable,
+        )
+        return
     if os.path.lexists(root / "Packages" / dependencies_v3_ownership.MARKER) or (
         isinstance(portable_value, dict)
         and type(portable_value.get("version")) is int
@@ -1825,10 +1905,10 @@ def prefetch(root: Path):
         raise PurifierError(
             f"{root} has no {LOCK_NAME}; run `swiftpm-purifier lock` first"
         )
-    if lock["version"] == dependencies_v3.FORMAT:
+    if lock["version"] in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT):
         native, portable = dependencies_v1_selections(root)
         sources = dependencies_v3_sources(root, lock)
-        dependencies_v3_lifecycle.install(
+        path_lifecycle(lock["version"]).install(
             root,
             lock_file.read_bytes(),
             sources,
@@ -2005,7 +2085,13 @@ def swift_command(arguments):
     if sdk_mode() or lock["version"] == LOCK_VERSION:
         require_runtime(root, lock)
     if (
-        lock["version"] not in (pre_workspace.FORMAT, 8, dependencies_v3.FORMAT)
+        lock["version"]
+        not in (
+            pre_workspace.FORMAT,
+            8,
+            dependencies_v3.FORMAT,
+            workspace_v4_path.FORMAT,
+        )
         and arguments
         and arguments[0] in BUILDING_SUBCOMMANDS
     ):
@@ -2030,16 +2116,21 @@ def swift_command(arguments):
         os.execvp(swift, [swift, *arguments])
     if not is_current(root, lock):
         # SwiftPM would resolve and download what the lock does not hold.
-        if lock["version"] not in (pre_workspace.FORMAT, 8, dependencies_v3.FORMAT):
+        if lock["version"] not in (
+            pre_workspace.FORMAT,
+            8,
+            dependencies_v3.FORMAT,
+            workspace_v4_path.FORMAT,
+        ):
             unlink(root)
         raise PurifierError(
             f"{lock_path(root)} is out of date with Package.swift or Package.resolved; "
             "run `swiftpm-purifier lock`, which resolves and records the new dependencies"
         )
     prefetch(root)
-    if lock["version"] == dependencies_v3.FORMAT:
+    if lock["version"] in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT):
         native, portable = dependencies_v1_selections(root)
-        status = dependencies_v3_lifecycle.run_native(
+        status = path_lifecycle(lock["version"]).run_native(
             root,
             lock_path(root).read_bytes(),
             [swift, *arguments],

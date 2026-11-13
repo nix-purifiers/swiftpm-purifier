@@ -165,6 +165,43 @@ class SelectedRuntimeAdmission(unittest.TestCase):
         self.raw = (self.f.root / "swiftpm-purifier.lock.json").read_bytes()
         self.hash_tree = lambda path: self.f.lock["pins"]["alpha"]["hash"]
 
+    def test_cli_owned9_uninstall_requires_no_selected_or_previous_sdk(self):
+        with (
+            mock.patch.multiple(
+                purifier,
+                LOCK_OVERRIDE=None,
+                RAW_LOCK_OVERRIDE=None,
+                TOOL_LOCK_OVERRIDE=None,
+                RAW_TOOL_LOCK_OVERRIDE=None,
+                RAW_SOURCE_REFERENCE=None,
+            ),
+            mock.patch.object(purifier, "sdk_mode", return_value=False),
+            mock.patch.object(
+                purifier,
+                "native_command",
+                side_effect=AssertionError("uninstall must not invoke an SDK"),
+            ),
+            mock.patch.object(
+                purifier,
+                "native_sdk_identity",
+                side_effect=AssertionError("uninstall must not identify an SDK"),
+            ),
+            mock.patch.object(
+                purifier, "dependencies_v1_hash", side_effect=self.hash_tree
+            ),
+            mock.patch.object(
+                purifier.dependencies_v1_lifecycle,
+                "registry",
+                return_value=self.f.registry,
+            ),
+        ):
+            purifier.unlink(self.f.root)
+        self.assertFalse((self.f.root / "Packages").exists())
+        self.assertFalse((self.f.root / ".build/dependencies-state.json").exists())
+        self.assertEqual(
+            (self.f.root / "swiftpm-purifier.lock.json").read_bytes(), self.raw
+        )
+
     def test_same_lock_installed_graph_still_requires_selected_runtime(self):
         before = legacy_runtime.source_fingerprint(self.f.root)
         with mock.patch.object(

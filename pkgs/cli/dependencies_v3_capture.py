@@ -6,16 +6,20 @@ from pathlib import Path
 
 import dependencies_v1_cache as cache
 import dependencies_v3 as protocol
+import native_path_protocols as protocols
+from native_path_family import codec
 import dependencies_v3_observation as observation
 import dependencies_v1_selectors as selectors
 
 
-def native_graph(root, environment=None):
+def native_graph(root, environment=None, *, native_protocol=protocols.DEPENDENCIES_V3):
     """Bind complete original native pins to unedited dependency records.
 
     This is an observation of data, never recovery or deletion authority.
     The caller must own the staging root and bound every native command.
     """
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
     root = Path(root)
     cache.require(
         root.is_absolute() and root == root.resolve(), "canonical capture root"
@@ -23,11 +27,16 @@ def native_graph(root, environment=None):
     cache.directory(root)
     cache.validate_environment(environment)
     cache.directory(root / ".build")
-    for relative in (".build/workspace-state.json", "Package.pins"):
+    other = (
+        "workspace-state.json"
+        if native_protocol is protocols.DEPENDENCIES_V3
+        else "dependencies-state.json"
+    )
+    for relative in (".build/" + other, "Package.pins"):
         cache.require(
             not os.path.lexists(root / relative), "mixed native capture state"
         )
-    state_raw = cache.regular_bytes(root, ".build/dependencies-state.json")
+    state_raw = cache.regular_bytes(root, ".build/" + native_protocol.state_basename)
     pin_raw = cache.regular_bytes(root, "Package.resolved")
     records = protocol.native_index(cache.decode(state_raw), root)
     pins = protocol.pins_index(cache.decode(pin_raw))
@@ -210,6 +219,7 @@ def prepare(
     *,
     native=selectors.DEFAULT,
     portable=selectors.DEFAULT,
+    native_protocol=protocols.DEPENDENCIES_V3,
 ):
     """Observe a fresh owned native graph and return validated portable bytes.
 
@@ -222,11 +232,19 @@ def prepare(
     import dependencies_v1_layout as layout
     from dependencies_v1_capture import NativeSession
 
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
     cache.require(not api.sdk_mode(), "portable9 SDK-bound CLI capture is unavailable")
     root, temporary = layout.canonical(root), layout.canonical(temporary)
     cache.require(
         not temporary.is_relative_to(root), "portable9 capture work must be external"
     )
+    if native_protocol is protocols.WORKSPACE_V4_PATH:
+        import workspace_v4_path_ownership
+
+        workspace_v4_path_ownership.require_same_family(
+            root, getattr(api, "dependencies_v1_hash", None)
+        )
     pin, output, logical = selectors.pair(root, native, portable)
     cache.require(pin.path is not None, "portable9 null native selector is unsupported")
     if pin.raw is not None:
@@ -265,7 +283,9 @@ def prepare(
             *(["resolve"] if update is None else ["update", *update]),
         ],
     )
-    records, new_native = native_graph(package, environment)
+    records, new_native = native_graph(
+        package, environment, native_protocol=native_protocol
+    )
     immutable_work = temporary / "immutable-sources"
     immutable_work.mkdir()
     pins, sources = immutable_sources(
@@ -311,7 +331,9 @@ def prepare(
     }
     lock["contentHash"] = protocol.content_hash(lock)
     protocol.validate_lock(lock, cache.decode(new_native), root)
-    final_records, final_native = native_graph(package, environment)
+    final_records, final_native = native_graph(
+        package, environment, native_protocol=native_protocol
+    )
     cache.require(
         final_records == records and final_native == new_native,
         "portable9 native graph changed during capture",
@@ -320,9 +342,13 @@ def prepare(
     pin.verify()
     output.verify()
     logical.verify()
+    if native_protocol is protocols.WORKSPACE_V4_PATH:
+        workspace_v4_path_ownership.require_same_family(
+            root, getattr(api, "dependencies_v1_hash", None)
+        )
     session.receipt.update(
         complete=True,
-        protocol="dependencies-state-v3",
+        protocol=native_protocol.name,
         portableContentHash=lock["contentHash"],
         sources={key: str(path) for key, path in sources.items()},
     )

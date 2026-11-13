@@ -22,6 +22,8 @@ let
       import ./sdk/swift515/package-set.nix { inherit pkgs; }
     else if sdkEpoch == "swift525" then
       import ./sdk/swift525/package-set.nix { inherit pkgs; }
+    else if sdkEpoch == "swift533" then
+      import ./sdk/swift533/package-set.nix { inherit pkgs; }
     else
       throw "unknown checkout2 test SDK fixture";
   builder = pkgs.callPackage ../pkgs/build-swiftpm-project { inherit swiftPackages purifier; };
