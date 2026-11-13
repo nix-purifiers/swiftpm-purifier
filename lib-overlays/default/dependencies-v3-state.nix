@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: MIT
-# Closed portable9/native3 reader. Declared inputs only; no host ownership authority.
+# Closed native path-reference readers. No host ownership authority.
 {
   lock,
   raw,
@@ -7,8 +7,26 @@
   lockFile,
   storeName,
   packageResolved ? null,
+  nativePathProtocol ? "dependencies-state-v3",
 }@args:
 let
+  descriptor =
+    if nativePathProtocol == "dependencies-state-v3" then
+      {
+        portable = 9;
+        native = 3;
+        stateFile = "dependencies-state.json";
+        artifacts = false;
+      }
+    else if nativePathProtocol == "workspace-state-v4-path" then
+      {
+        portable = 10;
+        native = 4;
+        stateFile = "workspace-state.json";
+        artifacts = true;
+      }
+    else
+      throw "swiftpm-purifier: unknown native path protocol descriptor";
   names = builtins.attrNames;
   closed =
     value: fields: builtins.isAttrs value && names value == builtins.sort builtins.lessThan fields;
@@ -325,9 +343,9 @@ let
   shape =
     closed lock topFields
     && builtins.isInt lock.version
-    && lock.version == 9
+    && lock.version == descriptor.portable
     && builtins.isInt lock.workspaceStateVersion
-    && lock.workspaceStateVersion == 3
+    && lock.workspaceStateVersion == descriptor.native
     && safeName lock.package
     && safeName lock.rootDirectory
     && builtins.isAttrs lock.pins
@@ -452,20 +470,20 @@ let
   );
   problem =
     if !selectorValid then
-      "invalid portable9 source or selected pin/lock path/type"
+      "invalid portable${toString descriptor.portable} source or selected pin/lock path/type"
     else if !rawValid || !shape then
-      "invalid closed portable9/native3 schema"
+      "invalid closed portable${toString descriptor.portable}/native${toString descriptor.native} schema"
     else if lock.contentHash != contentHash then
-      "portable9 content hash mismatch"
+      "portable${toString descriptor.portable} content hash mismatch"
     else if
       !byteBound selectedRaw
       || !byteBound logicalRaw
       || !noDuplicates selectedRaw selectedValue
       || !nativeJoin
     then
-      "invalid portable9 selected native pins v1/graph"
+      "invalid portable${toString descriptor.portable} selected native pins v1/graph"
     else if !manifestsValid || lock.manifestHash != manifestHash then
-      "stale portable9 root/local manifest currency"
+      "stale portable${toString descriptor.portable} root/local manifest currency"
     else
       null;
   usable = problem == null;
@@ -531,18 +549,21 @@ in
   products = if usable then products else [ ];
   inherit storeName;
   entryName = entry: storeName entry.path;
-  lockVersion = 9;
+  lockVersion = descriptor.portable;
   nativeSDK = null;
   preWorkspace = null;
   toolLockName = "Package.resolved";
   toolLockFile = if usable then selected else null;
   toolLockBytes = if usable then selectedRaw else null;
-  workspaceStateFile = "dependencies-state.json";
+  workspaceStateFile = descriptor.stateFile;
   workspaceState =
     if usable then
       {
-        version = 3;
-        object.dependencies = locals ++ map editedRecord (names pins);
+        version = descriptor.native;
+        object = {
+          dependencies = locals ++ map editedRecord (names pins);
+        }
+        // (if descriptor.artifacts then { artifacts = [ ]; } else { });
       }
     else
       null;

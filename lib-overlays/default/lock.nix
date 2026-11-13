@@ -520,8 +520,14 @@ let
     in
     if undotted == "" then "entry" else undotted;
 in
-if builtins.isAttrs lock && (lock.version or null) == 9 then
-  import ./dependencies-v3-state.nix (
+if
+  builtins.isAttrs lock
+  && builtins.elem (lock.version or null) [
+    9
+    10
+  ]
+then
+  import (if lock.version == 9 then ./dependencies-v3-state.nix else ./workspace-v4-path-state.nix) (
     {
       inherit
         lock

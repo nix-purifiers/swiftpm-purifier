@@ -18,10 +18,11 @@ import dependencies_v3 as protocol
 class Capture(Transaction):
     PROTOCOL = "dependencies-state-v3"
     OPERATION = "capture-update-v3"
+    CODEC = protocol
 
     def validate(self, record):
         record = super().validate(record)
-        protocol.validate_raw(
+        self.CODEC.validate_raw(
             decoded(record["new"][1]), decoded(record["new"][0]), self.root
         )
         return record
@@ -54,6 +55,7 @@ def binding(selection, *, logical=False):
 class Bridge(NativePinBridge):
     PROTOCOL = "dependencies-state-v3"
     OPERATION = "native-pin-bridge-v3"
+    CODEC = protocol
     EXTRA_FIELDS = {"selectedNative", "selectedPortable"}
 
     def __init__(
@@ -109,7 +111,7 @@ class Bridge(NativePinBridge):
         need(
             portable.raw == decoded(record["old"][1]), "portable9 selected lock changed"
         )
-        protocol.validate_raw(
+        self.CODEC.validate_raw(
             decoded(record["new"][1]), decoded(record["new"][0]), self.root
         )
         return record

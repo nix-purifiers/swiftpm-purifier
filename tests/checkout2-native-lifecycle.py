@@ -42,7 +42,7 @@ def main():
     parser.add_argument("--external", action="store_true")
     parser.add_argument(
         "--sdk-epoch",
-        choices=("swift413", "swift503", "swift515", "swift525"),
+        choices=("swift413", "swift503", "swift515", "swift525", "swift533"),
         default="swift413",
     )
     args = parser.parse_args()
@@ -51,8 +51,9 @@ def main():
         "swift503": ("5.0.3", "5.0.0"),
         "swift515": ("5.1.5", "5.1.0"),
         "swift525": ("5.2.5", "5.2.0"),
+        "swift533": ("5.3.3", "5.3.0"),
     }[args.sdk_epoch]
-    portable_version = 9 if args.sdk_epoch == "swift525" else 4
+    portable_version = {"swift525": 9, "swift533": 10}.get(args.sdk_epoch, 4)
     SDK = args.runtime_prefix.resolve(strict=True)
     if args.nix_prefetch_git is None:
         parser.error("provide the existing nix-prefetch-git executable")
@@ -248,7 +249,7 @@ def main():
                     source / "Sources/Alpha/Alpha.swift",
                     "import Beta\npublic func alpha() -> Int { return beta()-2 }\n",
                 )
-            if args.sdk_epoch == "swift525":
+            if args.sdk_epoch in ("swift525", "swift533"):
                 manifest = source / "Package.swift"
                 manifest.write_text(
                     manifest.read_text().replace('package:"Beta"', 'package:"BetaPkg"')
@@ -338,7 +339,7 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
             "import XCTest\n@testable import CoreTests\nXCTMain([testCase(CoreTests.allTests)])\n",
         )
         (root / "empty-directory").mkdir()
-        if args.sdk_epoch == "swift525":
+        if args.sdk_epoch in ("swift525", "swift533"):
             # Exercise the original v3 local kind/path geometry alongside
             # the same remote transitive graph. Its value keeps answer 42.
             write(
@@ -464,7 +465,7 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
         run("host-relock", [*command, "relock"])
         assert not (fixture / ".build").exists()
         receipt["coldBeforePrefetch"] = True
-        if args.sdk_epoch == "swift525":
+        if args.sdk_epoch in ("swift525", "swift533"):
             # Resolve a real newer release while a verified older graph is
             # installed. The native resolver, not rewritten lock data, picks it.
             run("host-initial-prefetch", [*command, "prefetch"])
@@ -627,8 +628,10 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
             "after": installed_requests_after,
         }
         run("host-uninstall", [*command, "uninstall"])
-        if args.sdk_epoch == "swift525":
+        if args.sdk_epoch in ("swift525", "swift533"):
             assert not (fixture / ".build/dependencies-state.json").exists()
+            if args.sdk_epoch == "swift533":
+                assert not (fixture / ".build/workspace-state.json").exists()
         assert not (fixture / "Packages").exists() or not list(
             (fixture / "Packages").iterdir()
         )
@@ -638,7 +641,7 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
             (work / "host-state/swiftpm-purifier/dependencies-v1").glob(
                 "swiftpm-purifier-dependencies-v1-*/receipt.json"
             )
-            if args.sdk_epoch == "swift525"
+            if args.sdk_epoch in ("swift525", "swift533")
             else (work / "tmp").glob("swiftpm-purifier-legacy-runtime-*/receipt.json")
         )
         assert capsules

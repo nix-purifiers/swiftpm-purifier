@@ -9,6 +9,8 @@ import dependencies_v1_cache as cache
 import dependencies_v1_selectors as selectors
 import dependencies_v3 as protocol
 import dependencies_v3_ownership as ownership
+import native_path_protocols as protocols
+from native_path_family import codec, ownership as owner_module
 import legacy_runtime
 from dependencies_v1_install_transaction import (
     Installation as BaseInstallation,
@@ -57,8 +59,10 @@ def configuration_basis(root):
     return {"environment": environment, "files": files}
 
 
-def marker_snapshot(marker, snapshot):
+def marker_snapshot(marker, snapshot, *, native_protocol=protocols.DEPENDENCIES_V3):
     """Bind complete typed ownership metadata to the Packages byte inventory."""
+    native_protocol = protocols.checked(native_protocol)
+    protocol, ownership = codec(native_protocol), owner_module(native_protocol)
     if marker is None:
         need(snapshot is None, "unowned Packages role is not admissible")
         return
@@ -97,16 +101,20 @@ def marker_snapshot(marker, snapshot):
     )
 
 
-def state_snapshot_matches(snapshot, raw, *, build_directory=False):
+def state_snapshot_matches(
+    snapshot, raw, *, build_directory=False, native_protocol=protocols.DEPENDENCIES_V3
+):
+    native_protocol = protocols.checked(native_protocol)
+    basename = native_protocol.state_basename
     if build_directory:
         need(
             snapshot is not None and snapshot["kind"] == "directory",
             "new build snapshot missing",
         )
         entries = snapshot["entries"]
-        need(set(entries) == {".", "dependencies-state.json"}, "new build role closure")
+        need(set(entries) == {".", basename}, "new build role closure")
         need(
-            entries["dependencies-state.json"]
+            entries[basename]
             == {
                 "kind": "regular",
                 "mode": 0o600,
@@ -126,6 +134,7 @@ def state_snapshot_matches(snapshot, raw, *, build_directory=False):
 
 
 class Installation(BaseInstallation):
+    NATIVE_PROTOCOL = protocols.DEPENDENCIES_V3
     PROTOCOL = "dependencies-state-v3"
     INSTALL_OPERATION = "owned-install-v3"
     INSTALL_EXTRA_FIELDS = {
@@ -149,11 +158,46 @@ class Installation(BaseInstallation):
         # Fixed mutation roles come from BaseInstallation, but selected input
         # locks/bindings must also include external native and portable files.
         Transaction.__init__(self, root, registry, native, portable)
+        self.native_protocol = protocols.checked(self.NATIVE_PROTOCOL)
+        self.codec = codec(self.native_protocol)
+        self.ownership = owner_module(self.native_protocol)
         self.native_selection = selectors.select(self.root, native)
         self.portable_selection = selectors.select(self.root, portable, portable=True)
         self.owners = owners
         self.hash_tree = hash_tree
         self.planned_new = None
+
+    def role_paths(self, record):
+        return [
+            self.root / "Packages",
+            self.root / ".build" / self.native_protocol.state_basename
+            if record["buildIdentity"] is not None
+            else self.root / ".build",
+        ]
+
+    def guard_protocol_layout(self, record):
+        if self.native_protocol is protocols.WORKSPACE_V4_PATH:
+            try:
+                self.ownership.validate_native_layout(self.root)
+                packages = self.root / "Packages"
+                if os.path.lexists(packages):
+                    cache.directory(packages)
+                    need(
+                        not os.path.lexists(
+                            packages / protocols.DEPENDENCIES_V3.ownership_marker
+                        ),
+                        "cross-protocol ownership marker appeared",
+                    )
+            except (ValueError, OSError):
+                self.foreign_control(record)
+
+    def guard_control(self, record, phase):
+        self.guard_protocol_layout(record)
+        return super().guard_control(record, phase)
+
+    def guard_pending(self, record):
+        self.guard_protocol_layout(record)
+        return super().guard_pending(record)
 
     def recover(self, callback=None):
         try:
@@ -186,6 +230,14 @@ class Installation(BaseInstallation):
 
     def publish(self, sources, expected, callback=None):
         self.check()
+        if self.native_protocol is protocols.WORKSPACE_V4_PATH:
+            from dependencies_v1_lifecycle import recover_locked
+
+            need(
+                recover_locked(self) == "clean",
+                "recover recorded operation and recapture before installation",
+            )
+            self.ownership.require_same_family(self.root, self.hash_tree)
         need(
             callable(self.hash_tree),
             "fresh install requires bounded source NAR verification",
@@ -201,7 +253,7 @@ class Installation(BaseInstallation):
             None if path is None else snapshot(Path(path)) for path in sources
         ]
         need(
-            ownership.existing(self.root, self.hash_tree) == self.owners[0],
+            self.ownership.existing(self.root, self.hash_tree) == self.owners[0],
             "old owned set changed",
         )
         new = self.owners[1]
@@ -245,6 +297,8 @@ class Installation(BaseInstallation):
         }
 
     def validate(self, record):
+        if self.native_protocol is protocols.WORKSPACE_V4_PATH:
+            self.ownership.validate_native_layout(self.root)
         record = super().validate(record)
         need(
             isinstance(record["ownership"], list) and len(record["ownership"]) == 2,
@@ -274,10 +328,12 @@ class Installation(BaseInstallation):
         need(old is not None or new is not None, "empty ownership transition")
         for label, marker in zip(("old", "new"), (old, new)):
             if marker is not None:
-                ownership.validate_marker(marker, self.root)
-            marker_snapshot(marker, record[label][0])
+                self.ownership.validate_marker(marker, self.root)
+            marker_snapshot(
+                marker, record[label][0], native_protocol=self.native_protocol
+            )
         if new is not None:
-            protocol.validate_raw(portable.raw, native.raw, self.root)
+            self.codec.validate_raw(portable.raw, native.raw, self.root)
             need(
                 cache.decode(portable.raw) == new["portable"]
                 and native.raw == decoded(new["nativePins"]),
@@ -285,8 +341,9 @@ class Installation(BaseInstallation):
             )
             state_snapshot_matches(
                 record["new"][1],
-                protocol.canonical(new["projection"]),
+                self.codec.canonical(new["projection"]),
                 build_directory=record["buildIdentity"] is None,
+                native_protocol=self.native_protocol,
             )
         if old is None:
             need(
@@ -301,7 +358,7 @@ class Installation(BaseInstallation):
                 state is not None and state["kind"] == "regular",
                 "old owned native state missing",
             )
-            ownership.projection_matches(
+            self.ownership.projection_matches(
                 decoded(state["bytes"]), old["projection"], self.root
             )
             if new is not None:
@@ -315,12 +372,12 @@ class Installation(BaseInstallation):
                     "uninstall changed original backup",
                 )
         need(
-            len(protocol.canonical(record)) <= LIMIT,
+            len(self.codec.canonical(record)) <= LIMIT,
             "typed install reservation byte bound",
         )
         for phase in ("PREPARED", "COMMITTED"):
             need(
-                len(protocol.canonical(self.journal(record, phase))) <= LIMIT,
+                len(self.codec.canonical(self.journal(record, phase))) <= LIMIT,
                 "typed install journal byte bound",
             )
         return record

@@ -727,6 +727,7 @@ class ReadLock(unittest.TestCase):
                 sp.pre_workspace.FORMAT,
                 8,
                 sp.dependencies_v3.FORMAT,
+                sp.workspace_v4_path.FORMAT,
             )
             + 1
         )

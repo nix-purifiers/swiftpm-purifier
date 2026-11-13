@@ -6,6 +6,8 @@ import os
 import dependencies_v1_cache as cache
 import dependencies_v1_layout as layout
 import dependencies_v3 as protocol
+import native_path_protocols as protocols
+from native_path_family import codec
 from dependencies_v1_install_transaction import snapshot, validate_snapshot
 from dependencies_v1_projection import writable_source
 from dependencies_v1_transaction import decoded, identity
@@ -25,33 +27,47 @@ FIELDS = {
 }
 
 
-def validate_native_layout(root):
+def validate_native_layout(root, *, native_protocol=protocols.DEPENDENCIES_V3):
     """Reject mixed native protocols without opening their state files."""
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
     root = layout.canonical(root)
     cache.require(not os.path.lexists(root / "Package.pins"), "mixed native pin format")
     build = root / ".build"
     if os.path.lexists(build):
         cache.directory(build)
         cache.require(
-            not os.path.lexists(build / "workspace-state.json"), "mixed native state"
+            not os.path.lexists(
+                build
+                / (
+                    "workspace-state.json"
+                    if native_protocol is protocols.DEPENDENCIES_V3
+                    else "dependencies-state.json"
+                )
+            ),
+            "mixed native state",
         )
     return root
 
 
-def native_state(root):
-    root = validate_native_layout(root)
+def native_state(root, *, native_protocol=protocols.DEPENDENCIES_V3):
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
+    root = validate_native_layout(root, native_protocol=native_protocol)
     build = root / ".build"
     if not os.path.lexists(build):
         return None
-    result = snapshot(build / "dependencies-state.json")
+    result = snapshot(build / native_protocol.state_basename)
     cache.require(
         result is None or result["kind"] == "regular", "native-v3 state must be regular"
     )
     return result
 
 
-def original_state(value, root):
+def original_state(value, root, *, native_protocol=protocols.DEPENDENCIES_V3):
     """Preserve exact original bytes, mode and absence; never derive authority."""
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
     validate_snapshot(value)
     if value is not None:
         cache.require(
@@ -63,7 +79,9 @@ def original_state(value, root):
     return value
 
 
-def projection(lock, root):
+def projection(lock, root, *, native_protocol=protocols.DEPENDENCIES_V3):
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
     return protocol.edited_state(
         protocol.checkout_records(lock, root, physical_locals=False),
         root,
@@ -71,7 +89,11 @@ def projection(lock, root):
     )
 
 
-def projection_matches(raw, expected, root):
+def projection_matches(
+    raw, expected, root, *, native_protocol=protocols.DEPENDENCIES_V3
+):
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
     cache.require(
         protocol.native_index(
             cache.decode(raw), root, allow_edited=True, physical_locals=False
@@ -83,7 +105,9 @@ def projection_matches(raw, expected, root):
     )
 
 
-def validate_marker(value, root):
+def validate_marker(value, root, *, native_protocol=protocols.DEPENDENCIES_V3):
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
     root = layout.canonical(root)
     cache.require(
         isinstance(value, dict) and set(value) == FIELDS,
@@ -95,7 +119,7 @@ def validate_marker(value, root):
     cache.require(
         type(value["version"]) is int
         and value["version"] == 1
-        and value["protocol"] == "dependencies-state-v3"
+        and value["protocol"] == native_protocol.name
         and isinstance(value["rootIdentity"], list)
         and len(value["rootIdentity"]) == 2
         and all(type(n) is int for n in value["rootIdentity"])
@@ -107,9 +131,10 @@ def validate_marker(value, root):
     protocol.validate_lock(
         value["portable"], cache.decode(selected), root, current=False
     )
-    original_state(value["originalState"], root)
+    original_state(value["originalState"], root, native_protocol=native_protocol)
     cache.require(
-        value["projection"] == projection(value["portable"], root),
+        value["projection"]
+        == projection(value["portable"], root, native_protocol=native_protocol),
         "root9 owned projection binding",
     )
     cache.require(
@@ -118,22 +143,25 @@ def validate_marker(value, root):
     return value
 
 
-def existing(root, hash_tree):
+def existing(root, hash_tree, *, native_protocol=protocols.DEPENDENCIES_V3):
     """Validate the complete owned set before planning any mutation."""
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
     root = layout.canonical(root)
     packages = root / "Packages"
     if not os.path.lexists(packages):
         return None
     cache.directory(packages)
-    raw = cache.regular_bytes(packages, MARKER, MARKER_LIMIT)
-    value = validate_marker(cache.decode(raw), root)
+    marker = native_protocol.ownership_marker
+    raw = cache.regular_bytes(packages, marker, MARKER_LIMIT)
+    value = validate_marker(cache.decode(raw), root, native_protocol=native_protocol)
     cache.require(
         raw == protocol.canonical(value) + b"\n", "owned root9 marker changed"
     )
     pins = value["portable"]["pins"]
     names = {pin["name"] for pin in pins.values()}
     cache.require(
-        {path.name for path in packages.iterdir()} == names | {MARKER},
+        {path.name for path in packages.iterdir()} == names | {marker},
         "root9 owned package set changed",
     )
     for pin in pins.values():
@@ -141,19 +169,36 @@ def existing(root, hash_tree):
         cache.source_tree(path)
         cache.require(not os.path.lexists(path / ".git"), "root9 owned VCS metadata")
         cache.require(hash_tree(path) == pin["hash"], "root9 owned source changed")
-    state = native_state(root)
+    state = native_state(root, native_protocol=native_protocol)
     cache.require(state is not None, "root9 owned native state missing")
-    projection_matches(decoded(state["bytes"]), value["projection"], root)
+    projection_matches(
+        decoded(state["bytes"]),
+        value["projection"],
+        root,
+        native_protocol=native_protocol,
+    )
     return value
 
 
-def prepare_tree(root, lock, selected_raw, sources, destination, original, hash_tree):
+def prepare_tree(
+    root,
+    lock,
+    selected_raw,
+    sources,
+    destination,
+    original,
+    hash_tree,
+    *,
+    native_protocol=protocols.DEPENDENCIES_V3,
+):
     """Build external staging only; the durable committer owns publication."""
+    native_protocol = protocols.checked(native_protocol)
+    protocol = codec(native_protocol)
     from dependencies_v1_transaction import encoded
 
     root, destination = layout.canonical(root), layout.canonical(destination)
     protocol.validate_lock(lock, cache.decode(selected_raw), root)
-    original_state(original, root)
+    original_state(original, root, native_protocol=native_protocol)
     cache.require(
         not destination.is_relative_to(root) and not os.path.lexists(destination),
         "root9 staging must be new and external",
@@ -176,15 +221,15 @@ def prepare_tree(root, lock, selected_raw, sources, destination, original, hash_
         checked[key] = source
     value = {
         "version": 1,
-        "protocol": "dependencies-state-v3",
+        "protocol": native_protocol.name,
         "rootIdentity": identity(root),
         "portable": lock,
         "nativePins": encoded(selected_raw),
         "originalState": original,
-        "projection": projection(lock, root),
+        "projection": projection(lock, root, native_protocol=native_protocol),
     }
     value["contentHash"] = protocol.content_hash(value)
-    validate_marker(value, root)
+    validate_marker(value, root, native_protocol=native_protocol)
     destination.mkdir(mode=0o700)
     for key, source in checked.items():
         target = destination / lock["pins"][key]["name"]
@@ -193,6 +238,8 @@ def prepare_tree(root, lock, selected_raw, sources, destination, original, hash_
             hash_tree(target) == lock["pins"][key]["hash"],
             "root9 staged source NAR mismatch",
         )
-    (destination / MARKER).write_bytes(protocol.canonical(value) + b"\n")
-    (destination / MARKER).chmod(0o600)
+    (destination / native_protocol.ownership_marker).write_bytes(
+        protocol.canonical(value) + b"\n"
+    )
+    (destination / native_protocol.ownership_marker).chmod(0o600)
     return value

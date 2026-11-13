@@ -3,7 +3,8 @@
 
 Native version 3 keeps ``kind`` and ``path`` references. It is neither the
 version-2 boolean reference nor the later ``location`` reference protocol.
-This module never changes caller files or admits a different native version.
+The default API remains closed to format 9/native 3. An explicit immutable
+descriptor selects the separately closed workspace-4/path protocol.
 """
 
 import copy
@@ -18,6 +19,7 @@ from urllib.parse import urlsplit
 
 import dependencies_v1_cache as cache
 import legacy_state as legacy
+import native_path_protocols as protocols
 
 FORMAT = 9
 NATIVE_VERSION = 3
@@ -142,22 +144,32 @@ def checkout(record):
     return record
 
 
-def native_index(value, root=None, *, allow_edited=False, physical_locals=True):
+def native_index(
+    value,
+    root=None,
+    *,
+    allow_edited=False,
+    physical_locals=True,
+    protocol=protocols.DEPENDENCIES_V3,
+):
+    protocol = protocols.checked(protocol)
     require(
         isinstance(value, dict)
         and set(value) == {"object", "version"}
         and type(value["version"]) is int
-        and value["version"] == NATIVE_VERSION,
+        and value["version"] == protocol.native_version,
         "v3 native discriminator",
     )
     body = value["object"]
     require(
         isinstance(body, dict)
-        and set(body) == {"dependencies"}
+        and set(body) == protocol.object_fields
         and isinstance(body["dependencies"], list)
         and len(body["dependencies"]) <= LIMIT,
         "v3 native dependency envelope",
     )
+    if protocol is protocols.WORKSPACE_V4_PATH:
+        require(body["artifacts"] == [], "workspace4/path artifacts unsupported")
     result, names, locations, local_paths = {}, set(), set(), set()
     installed_paths = set()
     for record in body["dependencies"]:
@@ -199,9 +211,18 @@ def native_index(value, root=None, *, allow_edited=False, physical_locals=True):
     return result
 
 
-def edited_state(value, root=None, *, physical_locals=True):
+def edited_state(
+    value,
+    root=None,
+    *,
+    physical_locals=True,
+    protocol=protocols.DEPENDENCIES_V3,
+):
     """Derive exactly the original v3 edited geometry, preserving local records."""
-    records = native_index(value, root, physical_locals=physical_locals)
+    protocol = protocols.checked(protocol)
+    records = native_index(
+        value, root, physical_locals=physical_locals, protocol=protocol
+    )
     projected = []
     for identity in sorted(records):
         original = records[identity]
@@ -217,8 +238,14 @@ def edited_state(value, root=None, *, physical_locals=True):
                     "subpath": ref["name"],
                 }
             )
-    result = {"object": {"dependencies": projected}, "version": NATIVE_VERSION}
-    native_index(result, root, allow_edited=True, physical_locals=physical_locals)
+    result = protocols.native_value(projected, protocol)
+    native_index(
+        result,
+        root,
+        allow_edited=True,
+        physical_locals=physical_locals,
+        protocol=protocol,
+    )
     return result
 
 
@@ -327,7 +354,10 @@ def local_records(lock, root, *, physical=True):
     return result
 
 
-def checkout_records(lock, root, *, physical_locals=True):
+def checkout_records(
+    lock, root, *, physical_locals=True, protocol=protocols.DEPENDENCIES_V3
+):
+    protocol = protocols.checked(protocol)
     result = []
     for identity, pin in lock["pins"].items():
         result.append(
@@ -351,7 +381,7 @@ def checkout_records(lock, root, *, physical_locals=True):
             }
         )
     result.extend(local_records(lock, root, physical=physical_locals))
-    return {"object": {"dependencies": result}, "version": NATIVE_VERSION}
+    return protocols.native_value(result, protocol)
 
 
 def manifest_hash(root, locals_):
@@ -378,13 +408,21 @@ def manifest_hash(root, locals_):
     return hashlib.sha256(canonical(sorted(records))).hexdigest()
 
 
-def validate_lock(lock, selected_pins, root, *, current=True):
+def validate_lock(
+    lock,
+    selected_pins,
+    root,
+    *,
+    current=True,
+    protocol=protocols.DEPENDENCIES_V3,
+):
+    protocol = protocols.checked(protocol)
     require(isinstance(lock, dict) and set(lock) == TOP, "closed portable9 root fields")
     require(
         type(lock["version"]) is int
-        and lock["version"] == FORMAT
+        and lock["version"] == protocol.portable_format
         and type(lock["workspaceStateVersion"]) is int
-        and lock["workspaceStateVersion"] == NATIVE_VERSION,
+        and lock["workspaceStateVersion"] == protocol.native_version,
         "portable9/native3 discriminator",
     )
     require(
@@ -448,8 +486,8 @@ def validate_lock(lock, selected_pins, root, *, current=True):
             "portable9 selected pin join",
         )
     require(locations == set(selected), "portable9 selected pin closure")
-    graph = checkout_records(lock, root, physical_locals=current)
-    index = native_index(graph, root, physical_locals=current)
+    graph = checkout_records(lock, root, physical_locals=current, protocol=protocol)
+    index = native_index(graph, root, physical_locals=current, protocol=protocol)
     require(
         lock["package"] not in {row["packageRef"]["name"] for row in index.values()},
         "portable9 root/dependency name alias",
@@ -466,7 +504,8 @@ def validate_lock(lock, selected_pins, root, *, current=True):
     return lock
 
 
-def validate_raw(raw, selected_raw, root):
+def validate_raw(raw, selected_raw, root, *, protocol=protocols.DEPENDENCIES_V3):
+    protocol = protocols.checked(protocol)
     require(
         isinstance(raw, bytes)
         and len(raw) <= 1024 * 1024
@@ -474,4 +513,6 @@ def validate_raw(raw, selected_raw, root):
         and len(selected_raw) <= 1024 * 1024,
         "portable9 selected byte bounds/presence",
     )
-    return validate_lock(cache.decode(raw), cache.decode(selected_raw), root)
+    return validate_lock(
+        cache.decode(raw), cache.decode(selected_raw), root, protocol=protocol
+    )

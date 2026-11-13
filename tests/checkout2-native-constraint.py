@@ -17,13 +17,16 @@ def main():
     parser.add_argument("--runtime-prefix", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
-        "--sdk-epoch", choices=("swift503", "swift515", "swift525"), default="swift503"
+        "--sdk-epoch",
+        choices=("swift503", "swift515", "swift525", "swift533"),
+        default="swift503",
     )
     args = parser.parse_args()
     required, installed = {
         "swift503": ("5.1", "5.0.0"),
         "swift515": ("5.2", "5.1.0"),
         "swift525": ("5.3", "5.2.0"),
+        "swift533": ("5.4", "5.3.0"),
     }[args.sdk_epoch]
     work = args.output.resolve()
     work.mkdir()
