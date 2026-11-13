@@ -310,6 +310,15 @@ pure XCTest and installed product consumers. Default and read-only external
 selectors are exercised through the installed local CLI. Explicit-null pins
 are exercised through the pure reader and host lifecycle helper. These are
 individual measured domains, not a version interval or Darwin claim.
+The original Swift 4.1.3 compiler with SwiftPM 4.1.0 uses the existing
+format-4 lock and native dependency-state version 2. Its cold local CLI
+metadata query runs in an owned workspace with verified immutable sources.
+Native commands recoverably project selected pins and restore prior bytes
+and permissions; a surviving child retains the ownership locks. Recovery
+refuses while those locks are busy. This Linux fixture exercises native and
+pure XCTest, explicit static/dynamic products and an executable. Automatic
+products retain the earlier protocol's source-archive output.
+
 Format 8 has no SDK-bound CLI capture or consumption mode; pure builds may
 select an explicit immutable SDK. Formats 4–7 retain their own readers.
 
