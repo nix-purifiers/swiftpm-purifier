@@ -99,6 +99,7 @@ stdenvNoCC.mkDerivation {
       ./test_dependencies_v1_cache.py
       ./test_dependencies_v1.py
       ./test_swiftpm_purifier.py
+      ./test_legacy_runtime.py
       ./fixtures/native553
       ./fixtures/native633-v1
       ./fixtures/native424
@@ -112,7 +113,7 @@ stdenvNoCC.mkDerivation {
   doCheck = true;
   checkPhase = ''
     runHook preCheck
-    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_swiftpm_purifier test_dependencies_v1 test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection test_dependencies_v1_ownership test_dependencies_v1_tree_transaction test_dependencies_v1_install_transaction test_dependencies_v1_host test_dependencies_v1_bridge test_dependencies_v1_lifecycle)
+    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_swiftpm_purifier test_legacy_runtime test_dependencies_v1 test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection test_dependencies_v1_ownership test_dependencies_v1_tree_transaction test_dependencies_v1_install_transaction test_dependencies_v1_host test_dependencies_v1_bridge test_dependencies_v1_lifecycle)
     runHook postCheck
   '';
 

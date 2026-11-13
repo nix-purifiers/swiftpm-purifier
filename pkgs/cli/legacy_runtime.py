@@ -180,6 +180,9 @@ def validate(api, root, lock):
                 path.unlink()
         if native_bytes is not None:
             (stage / "Package.resolved").write_bytes(native_bytes)
+            (logs / "projected-native-pins").write_bytes(native_bytes)
+        receipt["nativePinsPresent"] = native_bytes is not None
+        receipt["capsuleRoot"] = str(stage)
         for name in ("tmp", "cache"):
             (work / name).mkdir()
         environment = dict(
@@ -242,10 +245,14 @@ def validate(api, root, lock):
             .replace(api.ROOT_PLACEHOLDER, str(stage))
         )
         expected_graph = state_index(json.loads(state))
+        (logs / "projected-state.json").write_text(state)
         for scratch in api.SCRATCH_DIRECTORIES:
             directory = stage / scratch
             directory.mkdir(parents=True, exist_ok=True)
             (directory / "dependencies-state.json").write_text(state)
+        capsule_before = source_fingerprint(stage)
+        receipt["capsuleBefore"] = capsule_before
+        save()
         raw = command(
             "native-dump-package",
             [
@@ -256,6 +263,17 @@ def validate(api, root, lock):
             ],
         )
         description = legacy_manifest.json_value(raw)
+        capsule_after = source_fingerprint(stage)
+        receipt["capsuleAfter"] = capsule_after
+        observed_state = (stage / ".build/dependencies-state.json").read_bytes()
+        (logs / "observed-state.json").write_bytes(observed_state)
+        if (stage / "Package.resolved").is_file():
+            (logs / "observed-native-pins").write_bytes(
+                (stage / "Package.resolved").read_bytes()
+            )
+        save()
+        if capsule_after != capsule_before:
+            raise ObservationError("package source changed during native observation")
         actual_products, name = api.product_description(description)
         if name != lock["package"] or sorted(
             actual_products, key=lambda p: p["name"]
@@ -264,10 +282,7 @@ def validate(api, root, lock):
                 "selected native manifest disagrees with locked products"
             )
         if (
-            state_index(
-                json.loads((stage / ".build/dependencies-state.json").read_text())
-            )
-            != expected_graph
+            state_index(json.loads(observed_state)) != expected_graph
             or (stage / ".build/workspace-state.json").exists()
         ):
             raise ObservationError("selected native runtime changed the locked graph")
