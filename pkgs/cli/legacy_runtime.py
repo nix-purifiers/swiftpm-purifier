@@ -124,13 +124,15 @@ def source_geometry(root):
     return result
 
 
-def source_fingerprint(root):
+def source_fingerprint(root, *, ignored_root=()):
     """Fingerprint precisely the source geometry copied by copy_package."""
     digest = hashlib.sha256()
     count = 0
     for directory, directories, files in os.walk(root, followlinks=False):
         parent = Path(directory)
         ignored = {".build", "Packages", ".git"} if parent == root else {".build"}
+        if parent == root:
+            ignored = ignored | set(ignored_root)
         directories[:] = sorted(n for n in directories if n not in ignored)
         names = sorted(set(directories + files) - ignored)
         for path in [parent, *(parent / name for name in names)]:

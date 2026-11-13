@@ -142,7 +142,10 @@ def lock_file(path):
 
 
 class Transaction:
+    PROTOCOL = "dependencies-state-v1"
     OPERATION = "capture-update"
+    EXTRA_FIELDS = frozenset()
+    ALLOW_DEFER_COMMIT = False
     KEEP_PORTABLE = False
     ALLOW_INTERNAL_SELECTORS = False
 
@@ -193,14 +196,18 @@ class Transaction:
                 self.parents.append(path.parent)
         self.parent_ids = [identity(parent) for parent in self.parents]
         self.bindings = [
-            None
-            if path is None
-            else {
-                "location": {"root": path.name}
-                if path.parent == self.root
-                else {"external": str(path)},
-                "parentIdentity": identity(path.parent),
-            }
+            (
+                None
+                if path is None
+                else {
+                    "location": (
+                        {"root": path.name}
+                        if path.parent == self.root
+                        else {"external": str(path)}
+                    ),
+                    "parentIdentity": identity(path.parent),
+                }
+            )
             for path in self.paths
         ]
         self.key = digest(["root", self.root_id])
@@ -274,13 +281,13 @@ class Transaction:
     def validate(self, record):
         self.check()
         need(
-            isinstance(record, dict) and set(record) == FIELDS,
+            isinstance(record, dict) and set(record) == FIELDS | self.EXTRA_FIELDS,
             "closed transaction reservation",
         )
         need(
             type(record["version"]) is int
             and record["version"] == 1
-            and record["protocol"] == "dependencies-state-v1"
+            and record["protocol"] == self.PROTOCOL
             and record["operation"] == self.OPERATION,
             "transaction protocol/operation",
         )
@@ -398,7 +405,7 @@ class Transaction:
                     canonical(
                         {
                             "version": 1,
-                            "protocol": "dependencies-state-v1",
+                            "protocol": self.PROTOCOL,
                             "rootIdentity": self.root_id,
                             "nonce": record["nonce"],
                             "expectedReservationSHA256": hashlib.sha256(
@@ -622,10 +629,14 @@ class Transaction:
         self.cleanup(record, callback, phase="PREPARED")
         return "restored-old-pair"
 
+    def prepare_record(self, record):
+        """Typed subclasses may add their explicitly declared closed fields."""
+        return record
+
     def publish(self, target, expected, callback=None, *, defer_commit=False):
         self.check()
         need(
-            not defer_commit or self.OPERATION == "native-pin-bridge",
+            not defer_commit or self.ALLOW_DEFER_COMMIT,
             "only native pin bridge may defer commit",
         )
         need(
@@ -641,16 +652,18 @@ class Transaction:
         need(self.pair() == expected, "publication inputs changed since capture")
         old_modes = self.modes()
         new_modes = [
-            None
-            if raw is None
-            else old_modes[index]
-            if old_modes[index] is not None
-            else 0o644
+            (
+                None
+                if raw is None
+                else old_modes[index]
+                if old_modes[index] is not None
+                else 0o644
+            )
             for index, raw in enumerate(target)
         ]
         record = {
             "version": 1,
-            "protocol": "dependencies-state-v1",
+            "protocol": self.PROTOCOL,
             "operation": self.OPERATION,
             "rootIdentity": self.root_id,
             "nonce": secrets.token_hex(32),
@@ -660,6 +673,7 @@ class Transaction:
             "oldModes": old_modes,
             "newModes": new_modes,
         }
+        record = self.prepare_record(record)
         self.validate(record)
         for value in (
             record,

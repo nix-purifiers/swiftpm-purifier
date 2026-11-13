@@ -17,12 +17,14 @@ def main():
     parser.add_argument("--runtime-prefix", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
-        "--sdk-epoch", choices=("swift503", "swift515"), default="swift503"
+        "--sdk-epoch", choices=("swift503", "swift515", "swift525"), default="swift503"
     )
     args = parser.parse_args()
-    required, installed = {"swift503": ("5.1", "5.0.0"), "swift515": ("5.2", "5.1.0")}[
-        args.sdk_epoch
-    ]
+    required, installed = {
+        "swift503": ("5.1", "5.0.0"),
+        "swift515": ("5.2", "5.1.0"),
+        "swift525": ("5.3", "5.2.0"),
+    }[args.sdk_epoch]
     work = args.output.resolve()
     work.mkdir()
     (work / "logs").mkdir()
@@ -63,9 +65,9 @@ def main():
         complete=True,
         nativeDiagnosticObserved=True,
         cleanErrorExit=result.returncode > 0,
-        signal=signal.Signals(-result.returncode).name
-        if result.returncode < 0
-        else None,
+        signal=(
+            signal.Signals(-result.returncode).name if result.returncode < 0 else None
+        ),
     )
     save()
 

@@ -40,7 +40,7 @@ For persistent use, add these packages through your usual Nix configuration.
 locked dependencies. Prefetch links them into `Packages/` and
 `.build/artifacts/` from the Nix store. The pre-workspace Git protocol
 instead installs verified, owned copies with their real Git metadata.
-The dependencies-state version-1 protocol installs verified, owned copies
+The dependencies-state version-1 and version-3 protocols install verified, owned copies
 without Git metadata and projects the native edited-dependency state.
 
 If you intentionally want a packaged runtime,
@@ -187,7 +187,8 @@ The standalone CLI uses the Swift runtime already selected by your PATH and
 original PATH. No packaged Swift SDK is required for this local workflow.
 Local locks use portable format 4, format 6 for original workspace-state
 version 1 with `Package.pins`, format 7 for the pre-workspace Git
-protocol, or format 8 for `.build/dependencies-state.json` version 1.
+protocol, format 8 for `.build/dependencies-state.json` version 1,
+or format 9 for its version-3 protocol with version-1 resolved pins.
 Runtime observations are diagnostic and do not bind the lock
 to a host binary or SDK version.
 Native manifest and dependency requirements are checked by the selected
@@ -340,8 +341,32 @@ XCTest, and explicit static/dynamic and executable consumers use the unchanged
 portable model and builder. The tools-5.2 control records the original native
 diagnostic and actual termination status separately.
 
-Format 8 has no SDK-bound CLI capture or consumption mode; pure builds may
-select an explicit immutable SDK. Formats 4–7 retain their own readers.
+Portable format 9 preserves the native dependencies-state version-3
+`kind`/`path` package references and complete edited-checkout `basedOn`
+records. It supports semantic-version remote Git dependencies and confined
+in-tree local packages. Root and selected local manifests are checked for
+currency. Branch-only or revision-only pins, registry and binary dependencies,
+and explicit-null native selectors remain unsupported. Older consumers reject
+format 9; putting native version 3 into a format-4 or format-5 lock is rejected.
+
+The original Swift 5.2.5 compiler with SwiftPM 5.2.0 is a measured Linux
+fixture for format 9, including a transitive remote graph and an in-tree local
+package. Default and read-only external selectors exercise cold capture,
+prefetch, native build/test/clean/rebuild, pure XCTest, and installed static,
+dynamic and executable consumers. Automatic products retain the source-archive
+output. The native tools-5.3 control records its diagnostic and actual status.
+These results describe this fixture point, not every Swift 5.2 release or Darwin.
+
+The format-9 host lifecycle admits the currently selected native toolchain in
+an owned arena before installation, reuse or foreground execution. It checks
+caller and arena source currency during that observation without binding the
+lock to a compiler version. Installation and removal preserve the original
+native-state bytes, permissions and absence; foreign files and recovery
+controls are retained and refused. Native commands inherit the ownership
+locks, and pin restoration precedes return after a forwarded signal.
+
+Formats 8 and 9 have no SDK-bound CLI capture or consumption mode; pure builds
+may select an explicit immutable SDK. Formats 4–7 retain their own readers.
 
 `lib.swiftpm-purifier.readLock { src, lockFile ? ..., packageResolved ? ... }`
 gives the lock in memory of the purifier contract:

@@ -116,6 +116,7 @@ let
   helloRead = library.readLock { src = ./fixtures/hello; };
 in
 {
+  dependencies-v3-codec = (import ./dependencies-v3.nix { inherit pkgs; }).test;
   native-projections = import ./native-projections.nix {
     inherit pkgs;
     build = build;

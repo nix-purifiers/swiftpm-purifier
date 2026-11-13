@@ -105,6 +105,12 @@ def recover_locked(guard):
     if raw is not None:
         value = cache.decode(raw)
         cache.require(isinstance(value, dict), "transaction reservation type")
+        if value.get("protocol") == "dependencies-state-v3":
+            import dependencies_v3_transaction
+
+            return dependencies_v3_transaction.recover_locked(
+                guard, value.get("operation")
+            )
         if value.get("operation") == "owned-install":
             return installation(guard).recover()
         if value.get("operation") == "native-pin-bridge":
@@ -214,9 +220,11 @@ def install(
             committer = installation(guard)
             paths = [
                 root / "Packages",
-                root / ".build/dependencies-state.json"
-                if basis["buildIdentity"] is not None
-                else root / ".build",
+                (
+                    root / ".build/dependencies-state.json"
+                    if basis["buildIdentity"] is not None
+                    else root / ".build"
+                ),
             ]
             committer.publish([packages, new_state], [snapshot(path) for path in paths])
             ownership.existing(root, hash_tree)

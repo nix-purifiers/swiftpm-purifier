@@ -41,14 +41,18 @@ def main():
     )
     parser.add_argument("--external", action="store_true")
     parser.add_argument(
-        "--sdk-epoch", choices=("swift413", "swift503", "swift515"), default="swift413"
+        "--sdk-epoch",
+        choices=("swift413", "swift503", "swift515", "swift525"),
+        default="swift413",
     )
     args = parser.parse_args()
     compiler, package_manager = {
         "swift413": ("4.1.3", "4.1.0"),
         "swift503": ("5.0.3", "5.0.0"),
         "swift515": ("5.1.5", "5.1.0"),
+        "swift525": ("5.2.5", "5.2.0"),
     }[args.sdk_epoch]
+    portable_version = 9 if args.sdk_epoch == "swift525" else 4
     SDK = args.runtime_prefix.resolve(strict=True)
     if args.nix_prefetch_git is None:
         parser.error("provide the existing nix-prefetch-git executable")
@@ -244,6 +248,11 @@ def main():
                     source / "Sources/Alpha/Alpha.swift",
                     "import Beta\npublic func alpha() -> Int { return beta()-2 }\n",
                 )
+            if args.sdk_epoch == "swift525":
+                manifest = source / "Package.swift"
+                manifest.write_text(
+                    manifest.read_text().replace('package:"Beta"', 'package:"BetaPkg"')
+                )
             # Fresh real Git identity, never a doctored captured URL/revision.
             write(source / "fixture-nonce", str(work) + "\n")
             for suffix, command in (
@@ -329,6 +338,42 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
             "import XCTest\n@testable import CoreTests\nXCTMain([testCase(CoreTests.allTests)])\n",
         )
         (root / "empty-directory").mkdir()
+        if args.sdk_epoch == "swift525":
+            # Exercise the original v3 local kind/path geometry alongside
+            # the same remote transitive graph. Its value keeps answer 42.
+            write(
+                root / "LocalPkg/Package.swift",
+                '// swift-tools-version:4.2\nimport PackageDescription\nlet package=Package(name:"LocalPkg",products:[.library(name:"LocalLib",targets:["Local"])],targets:[.target(name:"Local")])\n',
+            )
+            write(
+                root / "LocalPkg/Sources/Local/Local.swift",
+                "public func localValue() -> Int { return 0 }\n",
+            )
+            manifest = (
+                (root / "Package.swift")
+                .read_text()
+                .replace("swift-tools-version:4.0", "swift-tools-version:4.2", 1)
+            )
+            manifest = manifest.replace(
+                'package:"Alpha"', 'package:"AlphaPkg"'
+            ).replace('package:"Beta"', 'package:"BetaPkg"')
+            manifest = manifest.replace(
+                "dependencies:[.package(url:",
+                'dependencies:[.package(path:"LocalPkg"),.package(url:',
+                1,
+            )
+            manifest = manifest.replace(
+                '.product(name:"AlphaLib",package:"AlphaPkg")',
+                '.product(name:"AlphaLib",package:"AlphaPkg"),.product(name:"LocalLib",package:"LocalPkg")',
+            )
+            (root / "Package.swift").write_text(manifest)
+            core = root / "Sources/Core/Core.swift"
+            core.write_text(
+                "import Local\n"
+                + core.read_text().replace(
+                    "return left()+right()", "return left()+right()+localValue()"
+                )
+            )
         run("native-fetch", [SDK / "bin/swift-package", "fetch"], root)
         run("native-build", [SDK / "bin/swift-build"], root)
         run("native-test", [SDK / "bin/swift-test"], root)
@@ -417,6 +462,57 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
                 selected_native,
             ]
         run("host-relock", [*command, "relock"])
+        assert not (fixture / ".build").exists()
+        receipt["coldBeforePrefetch"] = True
+        if args.sdk_epoch == "swift525":
+            # Resolve a real newer release while a verified older graph is
+            # installed. The native resolver, not rewritten lock data, picks it.
+            run("host-initial-prefetch", [*command, "prefetch"])
+            old_portable = json.loads(selected_portable.read_bytes())
+            beta = work / "Beta-origin"
+            beta_source = beta / "Sources/Beta/Beta.swift"
+            beta_source.write_text(
+                beta_source.read_text() + "// Real patch release fixture\n"
+            )
+            run("Beta-patch-add", [TOOLS["git"], "-C", beta, "add", "."])
+            run(
+                "Beta-patch-commit",
+                [
+                    TOOLS["git"],
+                    "-C",
+                    beta,
+                    "commit",
+                    "-m",
+                    "Actual patch release fixture",
+                ],
+            )
+            run("Beta-patch-tag", [TOOLS["git"], "-C", beta, "tag", "1.0.1"])
+            run(
+                "Beta-patch-push",
+                [
+                    TOOLS["git"],
+                    "-C",
+                    beta,
+                    "push",
+                    str(remote / "Beta.git"),
+                    "refs/tags/1.0.1",
+                ],
+            )
+            run("host-installed-update", [*command, "update"])
+            updated = json.loads(selected_portable.read_bytes())
+            assert updated["pins"]["beta"]["version"] == "1.0.1"
+            assert (
+                updated["pins"]["beta"]["revision"]
+                != old_portable["pins"]["beta"]["revision"]
+            )
+            run("host-updated-prefetch", [*command, "prefetch"])
+            if not args.external:
+                logical_bytes = selected_native.read_bytes()
+            receipt["installedUpdate"] = {
+                "package": "BetaPkg",
+                "before": old_portable["pins"]["beta"],
+                "after": updated["pins"]["beta"],
+            }
         if args.external:
             selected_native.chmod(0o600)
             selected_portable.chmod(0o600)
@@ -427,12 +523,19 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
             native_parent.chmod(0o500)
             portable_parent.chmod(0o500)
         portable = json.loads(selected_portable.read_text())
-        assert portable["version"] == 4
-        assert not (fixture / ".build").exists()
-        receipt["coldBeforePrefetch"] = True
+        assert portable["version"] == portable_version
         save()
         pure_source = work / "pure-source"
-        shutil.copytree(fixture, pure_source, symlinks=True)
+        shutil.copytree(
+            fixture,
+            pure_source,
+            symlinks=True,
+            ignore=lambda parent, names: (
+                [name for name in names if name in (".build", "Packages", ".git")]
+                if Path(parent) == fixture
+                else []
+            ),
+        )
         (pure_source / "swiftpm-purifier.lock.json").write_bytes(
             selected_portable.read_bytes()
         )
@@ -512,18 +615,31 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
         receipt["pureOutputs"] = outputs
         save()
         run("host-prefetch", [*command, "prefetch"])
+        installed_requests_before = len(requests)
         run("host-build", [*command, "swift", "build"])
         run("host-test", [*command, "swift", "test"])
         run("host-clean", [*command, "swift", "package", "clean"])
         run("host-rebuild", [*command, "swift", "build"])
+        installed_requests_after = len(requests)
+        assert installed_requests_after == installed_requests_before
+        receipt["installedExecutionRequests"] = {
+            "before": installed_requests_before,
+            "after": installed_requests_after,
+        }
         run("host-uninstall", [*command, "uninstall"])
+        if args.sdk_epoch == "swift525":
+            assert not (fixture / ".build/dependencies-state.json").exists()
         assert not (fixture / "Packages").exists() or not list(
             (fixture / "Packages").iterdir()
         )
         assert (fixture / "Package.resolved").read_bytes() == logical_bytes
         assert source_manifest() == implementation_files
         capsules = sorted(
-            (work / "tmp").glob("swiftpm-purifier-legacy-runtime-*/receipt.json")
+            (work / "host-state/swiftpm-purifier/dependencies-v1").glob(
+                "swiftpm-purifier-dependencies-v1-*/receipt.json"
+            )
+            if args.sdk_epoch == "swift525"
+            else (work / "tmp").glob("swiftpm-purifier-legacy-runtime-*/receipt.json")
         )
         assert capsules
         assert all(json.loads(path.read_text())["complete"] for path in capsules)
@@ -544,10 +660,10 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
             assert (fixture / "Package.resolved").stat().st_mode & 0o777 == 0o600
         receipt.update(
             complete=True,
-            scope=f"Original Swift{compiler}/SwiftPM{package_manager} selected format4 cold host lifecycle, pure XCTest and explicit product consumers; automatic output is source archive; no inferred product, interval or Darwin claim.",
+            scope=f"Original Swift{compiler}/SwiftPM{package_manager} selected format{portable_version} cold host lifecycle, pure XCTest and explicit product consumers; automatic output is source archive; no inferred product, interval or Darwin claim.",
             hostCLI={
                 "executable": str(cli),
-                "portableVersion": 4,
+                "portableVersion": portable_version,
                 "originalPinsRestored": True,
             },
         )
