@@ -9,7 +9,7 @@ import dependencies_v1_cache as cache
 import dependencies_v1_selectors as selectors
 import dependencies_v3 as protocol
 import dependencies_v3_ownership as ownership
-import native_path_protocols as protocols
+import native_protocols as protocols
 from native_path_family import codec, ownership as owner_module
 import legacy_runtime
 from dependencies_v1_install_transaction import (
@@ -83,7 +83,10 @@ def marker_snapshot(marker, snapshot, *, native_protocol=protocols.DEPENDENCIES_
         },
         "owned marker/snapshot binding",
     )
-    names = {pin["name"] for pin in marker["portable"]["pins"].values()}
+    names = {
+        protocols.installation_name(native_protocol, key, pin)
+        for key, pin in marker["portable"]["pins"].items()
+    }
     need(
         {Path(name).parts[0] for name in entries if name != "."}
         == names | {ownership.MARKER},
@@ -176,15 +179,24 @@ class Installation(BaseInstallation):
         ]
 
     def guard_protocol_layout(self, record):
-        if self.native_protocol is protocols.WORKSPACE_V4_PATH:
+        if self.native_protocol in (
+            protocols.WORKSPACE_V4_PATH,
+            protocols.WORKSPACE_V5_LOCATION,
+        ):
             try:
                 self.ownership.validate_native_layout(self.root)
                 packages = self.root / "Packages"
                 if os.path.lexists(packages):
                     cache.directory(packages)
                     need(
-                        not os.path.lexists(
-                            packages / protocols.DEPENDENCIES_V3.ownership_marker
+                        not any(
+                            os.path.lexists(packages / descriptor.ownership_marker)
+                            for descriptor in (
+                                protocols.DEPENDENCIES_V3,
+                                protocols.WORKSPACE_V4_PATH,
+                                protocols.WORKSPACE_V5_LOCATION,
+                            )
+                            if descriptor is not self.native_protocol
                         ),
                         "cross-protocol ownership marker appeared",
                     )
@@ -230,7 +242,10 @@ class Installation(BaseInstallation):
 
     def publish(self, sources, expected, callback=None):
         self.check()
-        if self.native_protocol is protocols.WORKSPACE_V4_PATH:
+        if self.native_protocol in (
+            protocols.WORKSPACE_V4_PATH,
+            protocols.WORKSPACE_V5_LOCATION,
+        ):
             from dependencies_v1_lifecycle import recover_locked
 
             need(
@@ -259,8 +274,10 @@ class Installation(BaseInstallation):
         new = self.owners[1]
         if new is not None:
             need(sources[0] is not None, "new owned staging missing")
-            for pin in new["portable"]["pins"].values():
-                path = Path(sources[0]) / pin["name"]
+            for key, pin in new["portable"]["pins"].items():
+                path = Path(sources[0]) / protocols.installation_name(
+                    self.native_protocol, key, pin
+                )
                 cache.source_tree(path)
                 need(
                     not os.path.lexists(path / ".git"), "new owned staging VCS metadata"
@@ -297,7 +314,10 @@ class Installation(BaseInstallation):
         }
 
     def validate(self, record):
-        if self.native_protocol is protocols.WORKSPACE_V4_PATH:
+        if self.native_protocol in (
+            protocols.WORKSPACE_V4_PATH,
+            protocols.WORKSPACE_V5_LOCATION,
+        ):
             self.ownership.validate_native_layout(self.root)
         record = super().validate(record)
         need(

@@ -1,0 +1,51 @@
+{
+  "scope": "Exact native original Swift5.6.3 V5/pins1 model fixtures; tests relocate BOTH confined local paths into their temporary source root, never native runtime evidence",
+  "nativeEvidenceProofSHA256": "47bc8f051e353f73d28948e28e618998eba6d279e1bc193e0931dcca8f9aefe8",
+  "files": [
+    {
+      "file": "tag-state.json",
+      "sha256": "8aa91fb1353e7065b395151ecbc37a7443e606c44024485280427e8455a882c7",
+      "originalEvidence": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-040-release-tools42-edits/observed-native/.build--workspace-state.json"
+    },
+    {
+      "file": "tag-edited.json",
+      "sha256": "05f1f01964271ddacc23bca3003eeae0d3d503e962d3efa699bc3816d4bb0308",
+      "originalEvidence": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-040-release-tools42-edits/observed-native/native-edited-state.json"
+    },
+    {
+      "file": "tag-pins.json",
+      "sha256": "8806954d974f5a306aa40de5aa83f1fdc5d64d2ca04f55b25009a373b369df26",
+      "originalEvidence": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-040-release-tools42-edits/observed-native/Package.resolved"
+    },
+    {
+      "file": "branch-state.json",
+      "sha256": "73f83db2b31062dd60957e4089ed8496fa52cce7a1182b17b0bfd2d41e7a6b11",
+      "originalEvidence": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-042-release-tools42-branch/observed-native/.build--workspace-state.json"
+    },
+    {
+      "file": "branch-edited.json",
+      "sha256": "127e2330d8a10d39248f327a628695d45497f5bc8043796853a7350d5cc4cba7",
+      "originalEvidence": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-042-release-tools42-branch/observed-native/native-edited-state.json"
+    },
+    {
+      "file": "branch-pins.json",
+      "sha256": "41c8869145f19ab15c9d40ce76726df41624f8a4e1c4f465161bb20091fb6236",
+      "originalEvidence": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-042-release-tools42-branch/observed-native/Package.resolved"
+    },
+    {
+      "file": "revision-state.json",
+      "sha256": "137aac5f0f2f5c74fe42bc921edad4e96764398ffff620bd57ca211b4e6b7fc5",
+      "originalEvidence": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-045-release-tools42-revision/observed-native/.build--workspace-state.json"
+    },
+    {
+      "file": "revision-edited.json",
+      "sha256": "5d012a66896bc8e80c522c61c6fdfe82c433092f2f6a4cc977331a2209628ea3",
+      "originalEvidence": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-045-release-tools42-revision/observed-native/native-edited-state.json"
+    },
+    {
+      "file": "revision-pins.json",
+      "sha256": "e778c0375d5656b605d110e91c6e672f49884fdb304d0520bf2f806e0f10d550",
+      "originalEvidence": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-045-release-tools42-revision/observed-native/Package.resolved"
+    }
+  ]
+}

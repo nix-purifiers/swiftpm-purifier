@@ -1,0 +1,70 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : {
+          "basedOn" : null,
+          "packageRef" : {
+            "identity" : "alpha",
+            "kind" : "remoteSourceControl",
+            "location" : "http://127.0.0.1:35935/Alpha.git",
+            "name" : "AlphaPkg"
+          },
+          "state" : {
+            "checkoutState" : {
+              "revision" : "b772868de47574978859b6eaa66d7aef799944df"
+            },
+            "name" : "sourceControlCheckout"
+          },
+          "subpath" : "Alpha"
+        },
+        "packageRef" : {
+          "identity" : "alpha",
+          "kind" : "remoteSourceControl",
+          "location" : "http://127.0.0.1:35935/Alpha.git",
+          "name" : "AlphaPkg"
+        },
+        "state" : {
+          "name" : "edited",
+          "path" : null
+        },
+        "subpath" : "alpha"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "beta",
+          "kind" : "remoteSourceControl",
+          "location" : "http://127.0.0.1:35935/Beta.git",
+          "name" : "BetaPkg"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "b037f75cd4be0a86a566fd00fa027dfd209534b2",
+            "version" : "1.0.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "Beta"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "local",
+          "kind" : "fileSystem",
+          "location" : "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-045-release-tools42-revision/project/Local",
+          "name" : "Local"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-045-release-tools42-revision/project/Local"
+        },
+        "subpath" : "local"
+      }
+    ]
+  },
+  "version" : 5
+}

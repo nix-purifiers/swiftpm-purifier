@@ -80,6 +80,19 @@ stdenvNoCC.mkDerivation {
       ./native_path_protocols.py
       ./workspace_v4_path.py
       ./native_path_family.py
+      ./native_protocols.py
+      ./workspace_v5_location.py
+      ./workspace_v5_location_capture.py
+      ./workspace_v5_location_ownership.py
+      ./workspace_v5_location_transaction.py
+      ./workspace_v5_location_install_transaction.py
+      ./workspace_v5_location_lifecycle.py
+      ./test_workspace_v5_location.py
+      ./test_workspace_v5_location_dispatch.py
+      ./test_workspace_v5_location_fixture.py
+      ./test_workspace_v5_location_transaction.py
+      ./test_workspace_v5_location_install_transaction.py
+      ./fixtures/workspace563
       ./workspace_v4_path_capture.py
       ./workspace_v4_path_lifecycle.py
       ./workspace_v4_path_ownership.py
@@ -143,7 +156,7 @@ stdenvNoCC.mkDerivation {
   doCheck = true;
   checkPhase = ''
     runHook preCheck
-    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_swiftpm_purifier test_legacy_runtime test_legacy_pin_bridge test_dependencies_v1 test_dependencies_v3 test_workspace_v4_path test_workspace_v4_path_capture test_workspace_v4_path_ownership test_workspace_v4_path_transaction test_workspace_v4_path_install_transaction test_workspace_v4_path_lifecycle test_dependencies_v3_lifecycle test_dependencies_v3_install_transaction test_dependencies_v3_ownership test_dependencies_v3_capture test_dependencies_v3_transaction test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection test_dependencies_v1_ownership test_dependencies_v1_tree_transaction test_dependencies_v1_install_transaction test_dependencies_v1_host test_dependencies_v1_bridge test_dependencies_v1_lifecycle)
+    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_workspace_v5_location_dispatch test_workspace_v5_location test_workspace_v5_location_transaction test_workspace_v5_location_install_transaction test_swiftpm_purifier test_legacy_runtime test_legacy_pin_bridge test_dependencies_v1 test_dependencies_v3 test_workspace_v4_path test_workspace_v4_path_capture test_workspace_v4_path_ownership test_workspace_v4_path_transaction test_workspace_v4_path_install_transaction test_workspace_v4_path_lifecycle test_dependencies_v3_lifecycle test_dependencies_v3_install_transaction test_dependencies_v3_ownership test_dependencies_v3_capture test_dependencies_v3_transaction test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection test_dependencies_v1_ownership test_dependencies_v1_tree_transaction test_dependencies_v1_install_transaction test_dependencies_v1_host test_dependencies_v1_bridge test_dependencies_v1_lifecycle)
     runHook postCheck
   '';
 
@@ -173,6 +186,13 @@ stdenvNoCC.mkDerivation {
     cp pkgs/cli/native_path_protocols.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v4_path.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/native_path_family.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/native_protocols.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v5_location.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v5_location_capture.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v5_location_ownership.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v5_location_transaction.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v5_location_install_transaction.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v5_location_lifecycle.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v4_path_capture.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v4_path_lifecycle.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v4_path_ownership.py $out/libexec/swiftpm-purifier/

@@ -45,6 +45,9 @@ import dependencies_v3_ownership
 import workspace_v4_path
 import workspace_v4_path_lifecycle
 import workspace_v4_path_ownership
+import workspace_v5_location
+import workspace_v5_location_lifecycle
+import workspace_v5_location_ownership
 
 LOCK_NAME = "swiftpm-purifier.lock.json"
 LOCK_VERSION = 5
@@ -215,6 +218,12 @@ def path_lifecycle(version):
     raise PurifierError("unknown native path protocol")
 
 
+def state_lifecycle(version):
+    if version == workspace_v5_location.FORMAT:
+        return workspace_v5_location_lifecycle
+    return path_lifecycle(version)
+
+
 def validate_dependencies_v3(root, raw, version=dependencies_v3.FORMAT):
     if sdk_mode():
         raise PurifierError(
@@ -222,7 +231,7 @@ def validate_dependencies_v3(root, raw, version=dependencies_v3.FORMAT):
         )
     try:
         native, portable = dependencies_v1_selections(root)
-        return path_lifecycle(version).validate_source(root, raw, native, portable)
+        return state_lifecycle(version).validate_source(root, raw, native, portable)
     except (ValueError, OSError) as error:
         raise PurifierError(str(error)) from error
 
@@ -242,12 +251,18 @@ def dependencies_v3_sources(root, lock):
     dependencies_v1_cache.directory(packages)
     dependencies_v1_cache.require(
         {p.name for p in packages.iterdir()}
-        == {pin["name"] for pin in lock["pins"].values()},
+        == (
+            {key for key in lock["pins"]}
+            if lock["version"] == workspace_v5_location.FORMAT
+            else {pin["name"] for pin in lock["pins"].values()}
+        ),
         "realized native path dependency set",
     )
     result = {}
     for identity, pin in lock["pins"].items():
-        path = packages / pin["name"]
+        path = packages / (
+            identity if lock["version"] == workspace_v5_location.FORMAT else pin["name"]
+        )
         dependencies_v1_cache.require(path.is_symlink(), "realized source link")
         result[identity] = path.resolve(strict=True)
     return result
@@ -261,7 +276,7 @@ def relock_dependencies_v3(root, update=None, version=dependencies_v3.FORMAT):
     native, portable = dependencies_v1_selections(root)
     state = dependencies_v1_lifecycle.registry(root)
     with tempfile.TemporaryDirectory(prefix="native3-capture-", dir=state) as temporary:
-        lock, session = path_lifecycle(version).capture_and_publish(
+        lock, session = state_lifecycle(version).capture_and_publish(
             root,
             Path(temporary),
             sys.modules[__name__],
@@ -456,7 +471,11 @@ def is_current(root: Path, lock: dict) -> bool:
     """Whether the lockfile covers the pins of Package.resolved, as
     lock.nix checks, and the manifests the lock run saw."""
     refuse_mixed_dependency_state3(lock)
-    if lock.get("version") in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT):
+    if lock.get("version") in (
+        dependencies_v3.FORMAT,
+        workspace_v4_path.FORMAT,
+        workspace_v5_location.FORMAT,
+    ):
         validate_dependencies_v3(root, lock_path(root).read_bytes(), lock["version"])
         return True
     if lock.get("version") == 8:
@@ -645,7 +664,11 @@ def observe_pre_workspace_runtime():
 
 
 def require_runtime(root, lock):
-    if lock["version"] in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT):
+    if lock["version"] in (
+        dependencies_v3.FORMAT,
+        workspace_v4_path.FORMAT,
+        workspace_v5_location.FORMAT,
+    ):
         validate_dependencies_v3(root, lock_path(root).read_bytes(), lock["version"])
         native, portable = dependencies_v1_selections(root)
         state = dependencies_v1_lifecycle.registry(root)
@@ -653,7 +676,7 @@ def require_runtime(root, lock):
         with tempfile.TemporaryDirectory(
             prefix="native3-runtime-", dir=state
         ) as temporary:
-            return path_lifecycle(lock["version"]).runtime(
+            return state_lifecycle(lock["version"]).runtime(
                 root,
                 lock,
                 dependencies_v1_selectors.select(root, native).raw,
@@ -983,7 +1006,12 @@ def read_lock(root: Path):
     if (
         isinstance(lock, dict)
         and type(lock.get("version")) is int
-        and lock["version"] in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT)
+        and lock["version"]
+        in (
+            dependencies_v3.FORMAT,
+            workspace_v4_path.FORMAT,
+            workspace_v5_location.FORMAT,
+        )
     ):
         return validate_dependencies_v3(root, path.read_bytes(), lock["version"])
     if (
@@ -1014,7 +1042,7 @@ def read_lock(root: Path):
     ):
         raise PurifierError(
             f"{path} has lock format version {lock['version']}, and this swiftpm-purifier reads "
-            f"versions {LEGACY_LOCK_VERSION}, {LOCK_VERSION}, {legacy_state.FORMAT}, {pre_workspace.FORMAT}, 8, {dependencies_v3.FORMAT} and {workspace_v4_path.FORMAT}; run `swiftpm-purifier relock`"
+            f"versions {LEGACY_LOCK_VERSION}, {LOCK_VERSION}, {legacy_state.FORMAT}, {pre_workspace.FORMAT}, 8, {dependencies_v3.FORMAT}, {workspace_v4_path.FORMAT} and {workspace_v5_location.FORMAT}; run `swiftpm-purifier relock`"
         )
     if lock["version"] == legacy_state.FORMAT:
         try:
@@ -1329,6 +1357,94 @@ def workspace_path_candidate(value, *, root):
     return True
 
 
+def workspace_location_candidate(value, *, root, selected_pins):
+    """Observe a complete nonempty V5/pins1 graph, never mutation authority."""
+    if (
+        not isinstance(value, dict)
+        or type(value.get("version")) is not int
+        or value["version"] != 5
+    ):
+        return False
+    if selected_pins is None or (
+        isinstance(selected_pins, dict)
+        and type(selected_pins.get("version")) is int
+        and selected_pins["version"] == 2
+    ):
+        return False
+    body = value.get("object")
+    if (
+        not isinstance(body, dict)
+        or not isinstance(body.get("dependencies"), list)
+        or not body["dependencies"]
+    ):
+        return False
+    try:
+        records = workspace_v5_location.native_index(value, root)
+        pins = workspace_v5_location.pins_index(selected_pins)
+        remote = {
+            r["packageRef"]["location"]: r
+            for r in records.values()
+            if r["packageRef"]["kind"] == "remoteSourceControl"
+        }
+        dependencies_v1_cache.require(
+            set(remote) == set(pins), "workspace5 complete source/pin closure"
+        )
+        for location, record in remote.items():
+            dependencies_v1_cache.require(
+                pins[location]["package"] == record["packageRef"]["name"]
+                and workspace_v5_location.checkout_state(
+                    pins[location]["state"], selected=True
+                )
+                == record["state"]["checkoutState"],
+                "workspace5 source/pin state join",
+            )
+    except (ValueError, OSError) as error:
+        raise PurifierError(str(error)) from error
+    return True
+
+
+def fresh_location_workspace(root, existing):
+    """Explicit fresh adoption after recorded old ownership was removed."""
+    if not (
+        isinstance(existing, dict)
+        and type(existing.get("version")) is int
+        and existing["version"] in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT)
+    ):
+        return False
+    if any(
+        os.path.lexists(root / relative)
+        for relative in (
+            "Packages",
+            ".build/dependencies-state.json",
+            "Package.pins",
+            STATE_DIR / "links.json",
+            pre_workspace_install.LEGACY_STATE,
+        )
+    ):
+        return False
+    state_path = root / ".build/workspace-state.json"
+    if not os.path.lexists(state_path):
+        return False
+    value = dependencies_v1_cache.decode(
+        dependencies_v1_cache.regular_bytes(root, ".build/workspace-state.json")
+    )
+    if (
+        not isinstance(value, dict)
+        or type(value.get("version")) is not int
+        or value["version"] != 5
+    ):
+        return False
+    native, portable = dependencies_v1_selections(root)
+    selected, output, logical = dependencies_v1_selectors.pair(root, native, portable)
+    pins = (
+        dependencies_v1_cache.decode(selected.raw) if selected.raw is not None else None
+    )
+    result = workspace_location_candidate(value, root=root, selected_pins=pins)
+    for selection in (selected, output, logical):
+        selection.verify()
+    return result
+
+
 def fresh_path_workspace(root, existing):
     """Discover native PATH state after the old owned graph was removed.
 
@@ -1363,6 +1479,14 @@ def relock(root: Path, update=None):
         existing = read_json(lock_path(root))
     except (ValueError, OSError):
         existing = None
+    if (
+        isinstance(existing, dict)
+        and type(existing.get("version")) is int
+        and existing["version"] == workspace_v5_location.FORMAT
+    ) or os.path.lexists(root / "Packages" / workspace_v5_location_ownership.MARKER):
+        return relock_dependencies_v3(root, update, workspace_v5_location.FORMAT)
+    if fresh_location_workspace(root, existing):
+        return relock_dependencies_v3(root, update, workspace_v5_location.FORMAT)
     if fresh_path_workspace(root, existing):
         return relock_dependencies_v3(root, update, workspace_v4_path.FORMAT)
     if (
@@ -1384,6 +1508,9 @@ def relock(root: Path, update=None):
         )
         if workspace_path_candidate(value, root=root):
             return relock_dependencies_v3(root, update, workspace_v4_path.FORMAT)
+        selected = read_json(resolved_path(root))
+        if workspace_location_candidate(value, root=root, selected_pins=selected):
+            return relock_dependencies_v3(root, update, workspace_v5_location.FORMAT)
     native_state = root / ".build/dependencies-state.json"
     if (
         isinstance(existing, dict)
@@ -1514,6 +1641,10 @@ def relock(root: Path, update=None):
         state = json.loads(state_path.read_text())
         if workspace_path_candidate(state, root=package):
             return relock_dependencies_v3(root, update, workspace_v4_path.FORMAT)
+        if workspace_location_candidate(
+            state, root=package, selected_pins=read_json(resolved)
+        ):
+            return relock_dependencies_v3(root, update, workspace_v5_location.FORMAT)
         if state.get("version") == 1:
             if override_legacy is False:
                 raise PurifierError(
@@ -1693,6 +1824,7 @@ def lock_command(root: Path, force: bool):
                 8,
                 dependencies_v3.FORMAT,
                 workspace_v4_path.FORMAT,
+                workspace_v5_location.FORMAT,
             )
             else LEGACY_LOCK_VERSION
         )
@@ -1841,6 +1973,22 @@ def unlink(root: Path):
         portable_value = read_json(lock_path(root))
     except (ValueError, OSError):
         portable_value = None
+    if os.path.lexists(root / "Packages" / workspace_v5_location_ownership.MARKER) or (
+        isinstance(portable_value, dict)
+        and type(portable_value.get("version")) is int
+        and portable_value["version"] == workspace_v5_location.FORMAT
+    ):
+        if sdk_mode():
+            raise PurifierError("portable format 11 has no SDK-bound CLI lifecycle")
+        native, portable = dependencies_v1_selections(root)
+        workspace_v5_location_lifecycle.uninstall(
+            root,
+            dependencies_v1_hash,
+            dependencies_v1_lifecycle.registry(root),
+            native,
+            portable,
+        )
+        return
     if os.path.lexists(root / "Packages" / workspace_v4_path_ownership.MARKER) or (
         isinstance(portable_value, dict)
         and type(portable_value.get("version")) is int
@@ -1934,10 +2082,14 @@ def prefetch(root: Path):
         raise PurifierError(
             f"{root} has no {LOCK_NAME}; run `swiftpm-purifier lock` first"
         )
-    if lock["version"] in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT):
+    if lock["version"] in (
+        dependencies_v3.FORMAT,
+        workspace_v4_path.FORMAT,
+        workspace_v5_location.FORMAT,
+    ):
         native, portable = dependencies_v1_selections(root)
         sources = dependencies_v3_sources(root, lock)
-        path_lifecycle(lock["version"]).install(
+        state_lifecycle(lock["version"]).install(
             root,
             lock_file.read_bytes(),
             sources,
@@ -2120,6 +2272,7 @@ def swift_command(arguments):
             8,
             dependencies_v3.FORMAT,
             workspace_v4_path.FORMAT,
+            workspace_v5_location.FORMAT,
         )
         and arguments
         and arguments[0] in BUILDING_SUBCOMMANDS
@@ -2150,6 +2303,7 @@ def swift_command(arguments):
             8,
             dependencies_v3.FORMAT,
             workspace_v4_path.FORMAT,
+            workspace_v5_location.FORMAT,
         ):
             unlink(root)
         raise PurifierError(
@@ -2157,9 +2311,13 @@ def swift_command(arguments):
             "run `swiftpm-purifier lock`, which resolves and records the new dependencies"
         )
     prefetch(root)
-    if lock["version"] in (dependencies_v3.FORMAT, workspace_v4_path.FORMAT):
+    if lock["version"] in (
+        dependencies_v3.FORMAT,
+        workspace_v4_path.FORMAT,
+        workspace_v5_location.FORMAT,
+    ):
         native, portable = dependencies_v1_selections(root)
-        status = path_lifecycle(lock["version"]).run_native(
+        status = state_lifecycle(lock["version"]).run_native(
             root,
             lock_path(root).read_bytes(),
             [swift, *arguments],

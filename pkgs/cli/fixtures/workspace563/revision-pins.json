@@ -1,0 +1,25 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "AlphaPkg",
+        "repositoryURL": "http://127.0.0.1:35935/Alpha.git",
+        "state": {
+          "branch": null,
+          "revision": "b772868de47574978859b6eaa66d7aef799944df",
+          "version": null
+        }
+      },
+      {
+        "package": "BetaPkg",
+        "repositoryURL": "http://127.0.0.1:35935/Beta.git",
+        "state": {
+          "branch": null,
+          "revision": "b037f75cd4be0a86a566fd00fa027dfd209534b2",
+          "version": "1.0.0"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
