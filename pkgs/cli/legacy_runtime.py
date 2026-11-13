@@ -18,6 +18,112 @@ class ObservationError(ValueError):
     pass
 
 
+OUTPUT_LIMIT = 16 * 1024 * 1024
+
+
+def directory_fd(path):
+    """Walk a canonical absolute path without following any directory link."""
+    path = Path(path)
+    if not path.is_absolute() or ".." in path.parts:
+        raise ObservationError("native observation directory is not absolute")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+    descriptor = os.open(path.anchor, flags)
+    try:
+        for name in path.parts[1:]:
+            following = os.open(name, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = following
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def file_identity(info):
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_nlink,
+    )
+
+
+def regular_content(root, relative, limit, *, digest=None, single_link=True):
+    """Bound a nofollow physical-file read, including its parent directories.
+
+    NONBLOCK makes a substituted FIFO fail without waiting for a writer.
+    Source fingerprints stream into a digest; native outputs have a fixed cap.
+    """
+    relative = Path(relative)
+    if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+        raise ObservationError("invalid native observation relative path")
+    parent = directory_fd(Path(root) / relative.parent)
+    try:
+        descriptor = os.open(
+            relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent
+        )
+    finally:
+        os.close(parent)
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or (single_link and before.st_nlink != 1):
+            raise ObservationError(
+                "native observation output must be a physical regular file"
+            )
+        if before.st_size > limit:
+            raise ObservationError("native observation output exceeds its bound")
+        output = bytearray()
+        total = 0
+        while True:
+            block = os.read(descriptor, min(1024 * 1024, limit + 1 - total))
+            if not block:
+                break
+            total += len(block)
+            if total > limit:
+                raise ObservationError("native observation output exceeds its bound")
+            if digest is None:
+                output.extend(block)
+            else:
+                digest.update(block)
+        after = os.fstat(descriptor)
+        if file_identity(before) != file_identity(after) or total != after.st_size:
+            raise ObservationError("native observation file changed while reading")
+        return bytes(output)
+    finally:
+        os.close(descriptor)
+
+
+def source_geometry(root):
+    descriptor = directory_fd(root)
+    try:
+        info = os.fstat(descriptor)
+        result = {
+            ".": ["directory", info.st_dev, info.st_ino, stat.S_IMODE(info.st_mode)]
+        }
+    finally:
+        os.close(descriptor)
+    for directory, directories, files in os.walk(root, followlinks=False):
+        parent = Path(directory)
+        ignored = {".build", "Packages", ".git"} if parent == root else {".build"}
+        directories[:] = sorted(n for n in directories if n not in ignored)
+        for name in sorted(set(directories + files) - ignored):
+            path = parent / name
+            info = path.lstat()
+            row = [stat.S_IMODE(info.st_mode)]
+            if stat.S_ISLNK(info.st_mode):
+                row += ["symlink", os.readlink(path)]
+            elif stat.S_ISDIR(info.st_mode):
+                row += ["directory"]
+            elif stat.S_ISREG(info.st_mode):
+                row += ["regular", info.st_size]
+            else:
+                raise ObservationError("unsupported source entry in native observation")
+            result[str(path.relative_to(root))] = row
+    return result
+
+
 def source_fingerprint(root):
     """Fingerprint precisely the source geometry copied by copy_package."""
     digest = hashlib.sha256()
@@ -38,9 +144,13 @@ def source_fingerprint(root):
                 row += ["directory"]
             elif stat.S_ISREG(info.st_mode):
                 content = hashlib.sha256()
-                with path.open("rb") as stream:
-                    for block in iter(lambda: stream.read(1024 * 1024), b""):
-                        content.update(block)
+                regular_content(
+                    root,
+                    path.relative_to(root),
+                    info.st_size,
+                    digest=content,
+                    single_link=False,
+                )
                 row += ["regular", content.hexdigest()]
             else:
                 raise ObservationError("unsupported source entry in native observation")
@@ -251,7 +361,12 @@ def validate(api, root, lock):
             directory.mkdir(parents=True, exist_ok=True)
             (directory / "dependencies-state.json").write_text(state)
         capsule_before = source_fingerprint(stage)
+        geometry_before = source_geometry(stage)
         receipt["capsuleBefore"] = capsule_before
+        receipt["capsuleAfter"] = None
+        receipt["capsuleGeometryBefore"] = hashlib.sha256(
+            json.dumps(geometry_before, sort_keys=True).encode()
+        ).hexdigest()
         save()
         raw = command(
             "native-dump-package",
@@ -263,17 +378,27 @@ def validate(api, root, lock):
             ],
         )
         description = legacy_manifest.json_value(raw)
+        geometry_after = source_geometry(stage)
+        receipt["capsuleGeometryAfter"] = hashlib.sha256(
+            json.dumps(geometry_after, sort_keys=True).encode()
+        ).hexdigest()
+        if geometry_after != geometry_before:
+            save()
+            raise ObservationError("package source changed during native observation")
         capsule_after = source_fingerprint(stage)
         receipt["capsuleAfter"] = capsule_after
-        observed_state = (stage / ".build/dependencies-state.json").read_bytes()
+        if capsule_after != capsule_before:
+            save()
+            raise ObservationError("package source changed during native observation")
+        observed_state = regular_content(
+            stage, ".build/dependencies-state.json", OUTPUT_LIMIT
+        )
         (logs / "observed-state.json").write_bytes(observed_state)
-        if (stage / "Package.resolved").is_file():
+        if os.path.lexists(stage / "Package.resolved"):
             (logs / "observed-native-pins").write_bytes(
-                (stage / "Package.resolved").read_bytes()
+                regular_content(stage, "Package.resolved", OUTPUT_LIMIT)
             )
         save()
-        if capsule_after != capsule_before:
-            raise ObservationError("package source changed during native observation")
         actual_products, name = api.product_description(description)
         if name != lock["package"] or sorted(
             actual_products, key=lambda p: p["name"]
@@ -281,9 +406,8 @@ def validate(api, root, lock):
             raise ObservationError(
                 "selected native manifest disagrees with locked products"
             )
-        if (
-            state_index(json.loads(observed_state)) != expected_graph
-            or (stage / ".build/workspace-state.json").exists()
+        if state_index(json.loads(observed_state)) != expected_graph or os.path.lexists(
+            stage / ".build/workspace-state.json"
         ):
             raise ObservationError("selected native runtime changed the locked graph")
         after = basis(api, root)

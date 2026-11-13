@@ -17,12 +17,13 @@ from unittest.mock import patch
 
 import legacy_runtime as runtime
 import swiftpm_purifier as cli
+import bounded_native
 
 
 class LegacyRuntimeTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
-        self.base = Path(self.temporary.name)
+        self.base = Path(self.temporary.name).resolve()
         self.root = self.base / "caller/project"
         self.root.mkdir(parents=True)
         (self.root / "Package.swift").write_text("manifest input\n")
@@ -80,6 +81,26 @@ class LegacyRuntimeTests(unittest.TestCase):
 
     def receipt(self):
         return json.loads((self.work / "receipt.json").read_text())
+
+    def prompt_refusal(self, action, message):
+        # A regressed FIFO read must fail the test, never hang the check runner.
+        code = (
+            "from test_legacy_runtime import LegacyRuntimeTests,runtime\n"
+            "test=LegacyRuntimeTests('test_unchanged_delegate_preserves_cold_caller')\n"
+            "test.setUp()\ntry:\n"
+            " try:\n  test.observe(" + repr(action) + ")\n"
+            " except runtime.ObservationError as error:\n"
+            "  assert " + repr(message) + " in str(error), str(error)\n"
+            " else:\n  raise AssertionError('unsafe output accepted')\n"
+            "finally:\n test.tearDown()\n"
+        )
+        result = bounded_native.run(
+            [sys.executable, "-c", code],
+            cwd=Path(__file__).resolve().parent,
+            timeout=5,
+            output_limit=64 * 1024,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
 
     def test_unchanged_delegate_preserves_cold_caller(self):
         self.observe()
@@ -153,6 +174,63 @@ class LegacyRuntimeTests(unittest.TestCase):
             self.assertNotIn(self.root, work.parents)
         finally:
             shutil.rmtree(work)
+
+    def test_native_state_fifo_is_refused_without_waiting_for_a_writer(self):
+        self.prompt_refusal(
+            "p=Path('.build/dependencies-state.json');p.unlink();os.mkfifo(p)\n",
+            "physical regular file",
+        )
+
+    def test_native_state_symlink_is_not_followed(self):
+        self.prompt_refusal(
+            "p=Path('.build/dependencies-state.json');p.unlink();"
+            "target=Path('../state-fifo');os.mkfifo(target);p.symlink_to(target.resolve())\n",
+            "native metadata observation failed",
+        )
+
+    def test_native_state_parent_symlink_is_not_followed(self):
+        self.prompt_refusal(
+            "import shutil\n"
+            "target=Path('../outside-cache');target.mkdir();"
+            '(target/\'dependencies-state.json\').write_text(\'{"version":2,"object":{"dependencies":[]}}\');'
+            "shutil.rmtree('.build');Path('.build').symlink_to(target.resolve())\n",
+            "native metadata observation failed",
+        )
+
+    def test_oversize_native_state_is_refused_before_decoding(self):
+        self.prompt_refusal(
+            "with Path('.build/dependencies-state.json').open('r+b') as stream: "
+            "stream.truncate(16*1024*1024+1)\n",
+            "output exceeds its bound",
+        )
+
+    def test_oversize_changed_pin_is_refused_before_fingerprinting(self):
+        self.prompt_refusal(
+            "with Path('Package.resolved').open('r+b') as stream: stream.truncate(1<<40)\n",
+            "source changed during native observation",
+        )
+
+    def test_changed_pin_alias_is_refused_before_diagnostic_reads(self):
+        attempts = []
+        original = runtime.regular_content
+
+        def guarded(root, relative, *args, **kwargs):
+            if (
+                Path(relative) == Path("Package.resolved")
+                and (Path(root) / relative).is_symlink()
+            ):
+                attempts.append(str(Path(root) / relative))
+                raise AssertionError("changed pin alias reached a diagnostic reader")
+            return original(root, relative, *args, **kwargs)
+
+        action = (
+            "target=Path('../outside-pins');target.write_text('unselected target');"
+            "p=Path('Package.resolved');p.unlink();p.symlink_to(target.resolve())\n"
+        )
+        with patch.object(runtime, "regular_content", side_effect=guarded):
+            with self.assertRaisesRegex(runtime.ObservationError, "source changed"):
+                self.observe(action)
+        self.assertEqual(attempts, [])
 
 
 if __name__ == "__main__":
