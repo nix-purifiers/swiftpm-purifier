@@ -3,10 +3,26 @@
 { pkgs }:
 let
   original = import ../swift403/default.nix { inherit pkgs; };
+  # Interpreter arguments after the script path belong to the manifest.
+  # Keep its leading driver-mode selector first and insert compiler flags
+  # before the script; ordinary compiler/frontend dispatch stays unchanged.
   wrapper = builtins.toFile "wrap-original-swift503.py" (
-    builtins.replaceStrings [ "tool.name == \"clang-10\"" ] [ "tool.name == \"clang-7\"" ] (
-      builtins.readFile ../swift403/wrap-original.py
-    )
+    builtins.replaceStrings
+      [
+        ''tool.name == "clang-10"''
+        ''in swiftc:*|swift:-frontend) set -- "$@" ''
+        ''+ " ;; esac\n"''
+      ]
+      [
+        ''tool.name == "clang-7"''
+        "in swiftc:--driver-mode=swift) shift; set -- --driver-mode=swift "
+        ''
+          + ' "$@" ;; swiftc:*|swift:-frontend) set -- "$@" '
+          + " ".join(map(shlex.quote, ["-Xcc", "-nostdinc", "-Xcc", "-isystem", "-Xcc", str(root / "lib/swift/clang/include")]))
+          + " ;; esac\n"
+        ''
+      ]
+      (builtins.readFile ../swift403/wrap-original.py)
   );
 in
 original.overrideAttrs (old: {

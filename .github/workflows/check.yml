@@ -165,6 +165,7 @@ jobs:
           cli=$(cat "$RUNNER_TEMP/checkout2-swift503-cli-prefix")
           extra=()
           if [ "$SELECTOR" = external ]; then extra+=(--external); fi
+          python3 tests/checkout2-sdk-headers.py --runtime-prefix "$runtime" --modern-headers /usr/include --output "$RUNNER_TEMP/checkout2-swift503-headers"
           python3 tests/checkout2-native-constraint.py --runtime-prefix "$runtime" --output "$RUNNER_TEMP/checkout2-swift503-constraint"
           python3 tests/checkout2-native-lifecycle.py --sdk-epoch swift503 --transitive --runtime-prefix "$runtime" --nix-prefetch-git "$prefetch/bin/nix-prefetch-git" --cli "$cli/bin/swiftpm-purifier" --work "$RUNNER_TEMP/checkout2-swift503-native" "${extra[@]}"
       - name: Retain checkout2 evidence
@@ -174,6 +175,9 @@ jobs:
           name: checkout2-swift503-${{ matrix.selector }}
           include-hidden-files: true
           path: |
+            ${{ runner.temp }}/checkout2-swift503-headers/receipt.json
+            ${{ runner.temp }}/checkout2-swift503-headers/*/logs
+            ${{ runner.temp }}/checkout2-swift503-headers/*/control.swift
             ${{ runner.temp }}/checkout2-swift503-constraint
             ${{ runner.temp }}/checkout2-swift503-runtime-build.json
             ${{ runner.temp }}/checkout2-swift503-sdk-metadata

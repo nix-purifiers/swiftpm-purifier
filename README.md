@@ -321,7 +321,10 @@ products retain the earlier protocol's source-archive output.
 
 The original Swift 5.0.3 compiler with SwiftPM 5.0.0 is another measured
 Linux fixture using format 4 and native dependency-state version 2. It uses
-the same local CLI and pure builder without a new portable model. Default
+the same local CLI and pure builder without a new portable model. Its test
+SDK keeps interpreter header-search flags before the manifest path and after
+the required driver-mode selector; owned-sysroot and argument controls check
+this without changing compiler data or macros. Default
 and read-only external pins, native/pure XCTest, and explicit static/dynamic
 library and executable consumers are exercised with the original SDK. The
 native tools-5.1 constraint control retains both its version diagnostic and
