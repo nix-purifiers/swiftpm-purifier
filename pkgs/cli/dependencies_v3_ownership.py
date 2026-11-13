@@ -6,7 +6,7 @@ import os
 import dependencies_v1_cache as cache
 import dependencies_v1_layout as layout
 import dependencies_v3 as protocol
-import native_path_protocols as protocols
+import native_protocols as protocols
 from native_path_family import codec
 from dependencies_v1_install_transaction import snapshot, validate_snapshot
 from dependencies_v1_projection import writable_source
@@ -159,13 +159,16 @@ def existing(root, hash_tree, *, native_protocol=protocols.DEPENDENCIES_V3):
         raw == protocol.canonical(value) + b"\n", "owned root9 marker changed"
     )
     pins = value["portable"]["pins"]
-    names = {pin["name"] for pin in pins.values()}
+    names = {
+        protocols.installation_name(native_protocol, key, pin)
+        for key, pin in pins.items()
+    }
     cache.require(
         {path.name for path in packages.iterdir()} == names | {marker},
         "root9 owned package set changed",
     )
-    for pin in pins.values():
-        path = packages / pin["name"]
+    for key, pin in pins.items():
+        path = packages / protocols.installation_name(native_protocol, key, pin)
         cache.source_tree(path)
         cache.require(not os.path.lexists(path / ".git"), "root9 owned VCS metadata")
         cache.require(hash_tree(path) == pin["hash"], "root9 owned source changed")
@@ -232,7 +235,9 @@ def prepare_tree(
     validate_marker(value, root, native_protocol=native_protocol)
     destination.mkdir(mode=0o700)
     for key, source in checked.items():
-        target = destination / lock["pins"][key]["name"]
+        target = destination / protocols.installation_name(
+            native_protocol, key, lock["pins"][key]
+        )
         writable_source(source, target)
         cache.require(
             hash_tree(target) == lock["pins"][key]["hash"],

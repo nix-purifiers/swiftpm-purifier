@@ -188,7 +188,10 @@ original PATH. No packaged Swift SDK is required for this local workflow.
 Local locks use portable format 4, format 6 for original workspace-state
 version 1 with `Package.pins`, format 7 for the pre-workspace Git
 protocol, format 8 for `.build/dependencies-state.json` version 1,
-or format 9 for its version-3 protocol with version-1 resolved pins.
+format 9 for its version-3 protocol with version-1 resolved pins,
+format 10 for workspace-state version 4 with `kind`/`path` references,
+or format 11 for workspace-state version 5 with `kind`/`location` references
+and version-1 resolved pins.
 Runtime observations are diagnostic and do not bind the lock
 to a host binary or SDK version.
 Native manifest and dependency requirements are checked by the selected
@@ -367,6 +370,25 @@ locks, and pin restoration precedes return after a forwarded signal.
 
 Formats 8 and 9 have no SDK-bound CLI capture or consumption mode; pure builds
 may select an explicit immutable SDK. Formats 4–7 retain their own readers.
+
+Portable format 11 preserves workspace-state version-5 `kind`/`location`
+references with version-1 resolved pins, including tag, branch and revision
+checkouts and complete edited-checkout `basedOn` records. In-tree local
+packages must have matching reference and state paths and remain physically
+confined to the project. Registry dependencies, binary artifacts and
+explicit-null native selectors remain unsupported. Version-2 resolved pins
+use the existing format-4 protocol, not format 11.
+
+After uninstalling an owned format-9 or format-10 installation, a developer
+may select a newer toolchain and generate complete native version-5 state
+before recapturing as format 11. Mixed old and new native state is rejected.
+In particular, the original Swift 5.6.3 fetch command can leave version-3
+`dependencies-state.json` beside version-5 `workspace-state.json`; use the
+selected SDK's own reset and fetch commands to regenerate unambiguous state.
+The purifier does not remove those developer files to choose a protocol.
+A reverse transition from format 11 to the format-4/version-2-pins protocol
+is excluded and fails closed. Format 11 has no SDK-bound CLI mode; pure
+builds may select an explicit immutable SDK.
 
 `lib.swiftpm-purifier.readLock { src, lockFile ? ..., packageResolved ? ... }`
 gives the lock in memory of the purifier contract:

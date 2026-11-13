@@ -1,0 +1,71 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : {
+          "basedOn" : null,
+          "packageRef" : {
+            "identity" : "alpha",
+            "kind" : "remoteSourceControl",
+            "location" : "http://127.0.0.1:39029/Alpha.git",
+            "name" : "AlphaPkg"
+          },
+          "state" : {
+            "checkoutState" : {
+              "revision" : "1416893ef4416a3b3ba03964163f1bc8565cc63c",
+              "version" : "1.0.0"
+            },
+            "name" : "sourceControlCheckout"
+          },
+          "subpath" : "Alpha"
+        },
+        "packageRef" : {
+          "identity" : "alpha",
+          "kind" : "remoteSourceControl",
+          "location" : "http://127.0.0.1:39029/Alpha.git",
+          "name" : "AlphaPkg"
+        },
+        "state" : {
+          "name" : "edited",
+          "path" : null
+        },
+        "subpath" : "alpha"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "beta",
+          "kind" : "remoteSourceControl",
+          "location" : "http://127.0.0.1:39029/Beta.git",
+          "name" : "BetaPkg"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "41c2876c21b44be36cdfb9bac92e0444014a8954",
+            "version" : "1.0.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "Beta"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "local",
+          "kind" : "fileSystem",
+          "location" : "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-040-release-tools42-edits/project/Local",
+          "name" : "Local"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-040-release-tools42-edits/project/Local"
+        },
+        "subpath" : "local"
+      }
+    ]
+  },
+  "version" : 5
+}

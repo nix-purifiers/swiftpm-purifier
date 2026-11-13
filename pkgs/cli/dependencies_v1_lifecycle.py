@@ -105,6 +105,12 @@ def recover_locked(guard):
     if raw is not None:
         value = cache.decode(raw)
         cache.require(isinstance(value, dict), "transaction reservation type")
+        if value.get("protocol") == "workspace-state-v5-location-pins1":
+            import workspace_v5_location_transaction
+
+            return workspace_v5_location_transaction.recover_locked(
+                guard, value.get("operation")
+            )
         if value.get("protocol") == "workspace-state-v4-path":
             import workspace_v4_path_transaction
 

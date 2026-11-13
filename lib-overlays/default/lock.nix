@@ -525,20 +525,30 @@ if
   && builtins.elem (lock.version or null) [
     9
     10
+    11
   ]
 then
-  import (if lock.version == 9 then ./dependencies-v3-state.nix else ./workspace-v4-path-state.nix) (
-    {
-      inherit
-        lock
-        src
-        lockFile
-        storeName
-        ;
-      raw = builtins.readFile lockFile;
-    }
-    // (if args ? packageResolved then { inherit packageResolved; } else { })
-  )
+  import
+    (
+      if lock.version == 9 then
+        ./dependencies-v3-state.nix
+      else if lock.version == 10 then
+        ./workspace-v4-path-state.nix
+      else
+        ./workspace-v5-location-state.nix
+    )
+    (
+      {
+        inherit
+          lock
+          src
+          lockFile
+          storeName
+          ;
+        raw = builtins.readFile lockFile;
+      }
+      // (if args ? packageResolved then { inherit packageResolved; } else { })
+    )
 else if builtins.isAttrs lock && (lock.version or null) == 8 then
   import ./dependencies-v1-state.nix (
     {

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import dependencies_v1_cache as cache
 import dependencies_v3 as protocol
-import native_path_protocols as protocols
+import native_protocols as protocols
 from native_path_family import codec
 import dependencies_v3_observation as observation
 import dependencies_v1_selectors as selectors
@@ -41,9 +41,16 @@ def native_graph(root, environment=None, *, native_protocol=protocols.DEPENDENCI
     records = protocol.native_index(cache.decode(state_raw), root)
     pins = protocol.pins_index(cache.decode(pin_raw))
     remote = {
-        record["packageRef"]["path"]: record
+        record["packageRef"][
+            "location" if native_protocol is protocols.WORKSPACE_V5_LOCATION else "path"
+        ]: record
         for record in records.values()
-        if record["packageRef"]["kind"] == "remote"
+        if record["packageRef"]["kind"]
+        == (
+            "remoteSourceControl"
+            if native_protocol is protocols.WORKSPACE_V5_LOCATION
+            else "remote"
+        )
     }
     cache.require(set(remote) == set(pins), "native-v3 complete pin/source join")
     paths = set()
@@ -51,7 +58,12 @@ def native_graph(root, environment=None, *, native_protocol=protocols.DEPENDENCI
         pin = pins[location]
         cache.require(
             pin["package"] == record["packageRef"]["name"]
-            and pin["state"] == record["state"]["checkoutState"],
+            and (
+                protocol.checkout_state(pin["state"], selected=True)
+                if native_protocol is protocols.WORKSPACE_V5_LOCATION
+                else pin["state"]
+            )
+            == record["state"]["checkoutState"],
             "native-v3 pin/name/revision/version join",
         )
         subpath = record["subpath"]
@@ -63,13 +75,20 @@ def native_graph(root, environment=None, *, native_protocol=protocols.DEPENDENCI
     return records, pin_raw
 
 
-def checkout_heads(root, records, session, api):
+def checkout_heads(
+    root, records, session, api, *, native_protocol=protocols.DEPENDENCIES_V3
+):
     """Verify Git uses the owned checkout and its actual commit matches state."""
+    native_protocol = protocols.checked(native_protocol)
     root = Path(root)
     cache.validate_environment(session.env)
     result = {}
     for index, (identity, record) in enumerate(sorted(records.items())):
-        if record["packageRef"]["kind"] != "remote":
+        if record["packageRef"]["kind"] != (
+            "remoteSourceControl"
+            if native_protocol is protocols.WORKSPACE_V5_LOCATION
+            else "remote"
+        ):
             continue
         checkout = root / ".build/checkouts" / record["subpath"]
         cache.require(checkout == checkout.resolve(), "native-v3 checkout link")
@@ -115,7 +134,16 @@ def checkout_heads(root, records, session, api):
     return result
 
 
-def immutable_sources(root, temporary, records, session, api, mirrors=None):
+def immutable_sources(
+    root,
+    temporary,
+    records,
+    session,
+    api,
+    mirrors=None,
+    *,
+    native_protocol=protocols.DEPENDENCIES_V3,
+):
     """Join original native checkout content to a fixed-revision Nix fetch.
 
     ``mirrors`` is a measured source-location mapping supplied by the owned
@@ -126,6 +154,7 @@ def immutable_sources(root, temporary, records, session, api, mirrors=None):
     from dependencies_v1_projection import writable_source
     from native_sdk import store_root
 
+    native_protocol = protocols.checked(native_protocol)
     root, temporary = Path(root), Path(temporary)
     cache.require(
         temporary.is_absolute()
@@ -135,12 +164,18 @@ def immutable_sources(root, temporary, records, session, api, mirrors=None):
     )
     mirrors = {} if mirrors is None else mirrors
     cache.require(isinstance(mirrors, dict), "native-v3 mirror mapping")
-    heads = checkout_heads(root, records, session, api)
+    heads = checkout_heads(root, records, session, api, native_protocol=native_protocol)
     pins, sources = {}, {}
     for index, (identity, record) in enumerate(sorted(records.items())):
-        if record["packageRef"]["kind"] != "remote":
+        if record["packageRef"]["kind"] != (
+            "remoteSourceControl"
+            if native_protocol is protocols.WORKSPACE_V5_LOCATION
+            else "remote"
+        ):
             continue
-        location = record["packageRef"]["path"]
+        location = record["packageRef"][
+            "location" if native_protocol is protocols.WORKSPACE_V5_LOCATION else "path"
+        ]
         url = mirrors.get(location, location)
         protocol.checkout_subpath(url)
         label = "native-v3-source-" + str(index)
@@ -202,9 +237,11 @@ def immutable_sources(root, temporary, records, session, api, mirrors=None):
             "name": record["packageRef"]["name"],
             "sourceLocation": location,
             "revision": heads[identity],
-            "version": record["state"]["checkoutState"]["version"],
+            "version": record["state"]["checkoutState"].get("version"),
             "hash": fetched["hash"],
         }
+        if native_protocol is protocols.WORKSPACE_V5_LOCATION:
+            pin["branch"] = record["state"]["checkoutState"].get("branch")
         if url != location:
             pin["url"] = url
         pins[identity], sources[identity] = pin, source
@@ -239,10 +276,13 @@ def prepare(
     cache.require(
         not temporary.is_relative_to(root), "portable9 capture work must be external"
     )
-    if native_protocol is protocols.WORKSPACE_V4_PATH:
-        import workspace_v4_path_ownership
+    if native_protocol in (
+        protocols.WORKSPACE_V4_PATH,
+        protocols.WORKSPACE_V5_LOCATION,
+    ):
+        from native_path_family import ownership
 
-        workspace_v4_path_ownership.require_same_family(
+        ownership(native_protocol).require_same_family(
             root, getattr(api, "dependencies_v1_hash", None)
         )
     pin, output, logical = selectors.pair(root, native, portable)
@@ -295,6 +335,7 @@ def prepare(
         session,
         api,
         api.mirrors(package, temporary / "config", legacy=True),
+        native_protocol=native_protocol,
     )
     description = legacy_manifest.json_value(
         session.run("root-description", [*command, "dump-package"]).stdout
@@ -308,12 +349,27 @@ def prepare(
     products, name = api.product_description(description)
     locals_ = []
     for identity, record in sorted(records.items()):
-        if record["packageRef"]["kind"] == "local":
+        if record["packageRef"]["kind"] == (
+            "fileSystem"
+            if native_protocol is protocols.WORKSPACE_V5_LOCATION
+            else "local"
+        ):
             relative, _ = protocol.local_directory(
-                package, record["packageRef"]["path"]
+                package,
+                record["packageRef"][
+                    "location"
+                    if native_protocol is protocols.WORKSPACE_V5_LOCATION
+                    else "path"
+                ],
             )
             row = copy.deepcopy(record)
-            row["packageRef"]["path"] = "@root@/" + relative
+            row["packageRef"][
+                "location"
+                if native_protocol is protocols.WORKSPACE_V5_LOCATION
+                else "path"
+            ] = "@root@/" + relative
+            if native_protocol is protocols.WORKSPACE_V5_LOCATION:
+                row["state"]["path"] = "@root@/" + relative
             locals_.append(row)
     lock = {
         "version": protocol.FORMAT,
@@ -321,7 +377,16 @@ def prepare(
         "rootDirectory": root.name,
         "manifestHash": protocol.manifest_hash(
             package,
-            [row for row in records.values() if row["packageRef"]["kind"] == "local"],
+            [
+                row
+                for row in records.values()
+                if row["packageRef"]["kind"]
+                == (
+                    "fileSystem"
+                    if native_protocol is protocols.WORKSPACE_V5_LOCATION
+                    else "local"
+                )
+            ],
         ),
         "products": products,
         "workspaceStateVersion": protocol.NATIVE_VERSION,
@@ -342,8 +407,11 @@ def prepare(
     pin.verify()
     output.verify()
     logical.verify()
-    if native_protocol is protocols.WORKSPACE_V4_PATH:
-        workspace_v4_path_ownership.require_same_family(
+    if native_protocol in (
+        protocols.WORKSPACE_V4_PATH,
+        protocols.WORKSPACE_V5_LOCATION,
+    ):
+        ownership(native_protocol).require_same_family(
             root, getattr(api, "dependencies_v1_hash", None)
         )
     session.receipt.update(

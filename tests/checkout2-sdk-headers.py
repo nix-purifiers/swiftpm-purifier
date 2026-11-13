@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--runtime-prefix", type=Path, required=True)
     parser.add_argument("--modern-headers", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--sdk-epoch", choices=("legacy", "swift563"), default="legacy")
     args = parser.parse_args()
     sdk = args.runtime_prefix.resolve(strict=True)
     headers = args.modern_headers.resolve(strict=True)
@@ -31,6 +32,7 @@ def main():
         "complete": False,
         "scope": "Original SDK packaging controls only; real supplied modern headers, owned sysroot, no header/macro/compiler/version edits",
         "sdk": str(sdk),
+        "sdkEpoch": args.sdk_epoch,
         "modernHeaders": str(headers),
         "modernLimitsSHA256": hashlib.sha256(limits).hexdigest(),
         "commands": [],
@@ -71,10 +73,14 @@ def main():
             XDG_CACHE_HOME=str(arena / "cache"),
             PATH=str(sdk / "bin") + ":" + env.get("PATH", ""),
         )
+        interpreter = (
+            [sdk / "bin/swift"]
+            if args.sdk_epoch == "swift563"
+            else [sdk / "bin/swiftc", "--driver-mode=swift"]
+        )
         if role == "argv":
             command = [
-                sdk / "bin/swiftc",
-                "--driver-mode=swift",
+                *interpreter,
                 "-module-cache-path",
                 arena / "module-cache",
                 script,
@@ -82,8 +88,7 @@ def main():
             ]
         elif role == "interpreter":
             command = [
-                sdk / "bin/swiftc",
-                "--driver-mode=swift",
+                *interpreter,
                 "-module-cache-path",
                 arena / "module-cache",
                 "-sdk",

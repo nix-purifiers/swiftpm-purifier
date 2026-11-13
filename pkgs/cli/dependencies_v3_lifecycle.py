@@ -9,7 +9,7 @@ import dependencies_v1_cache as cache
 import dependencies_v1_layout as layout
 import dependencies_v1_selectors as selectors
 import dependencies_v3 as protocol
-import native_path_protocols as protocols
+import native_protocols as protocols
 import native_path_family as family
 import dependencies_v3_capture as capture
 import dependencies_v3_ownership as ownership
@@ -110,7 +110,9 @@ def runtime(
         cache.require(
             hash_tree(sources[key]) == pin["hash"], "runtime source NAR mismatch"
         )
-        path = probe / "Packages" / pin["name"]
+        path = (
+            probe / "Packages" / protocols.installation_name(native_protocol, key, pin)
+        )
         writable_source(sources[key], path)
         cache.require(
             hash_tree(path) == pin["hash"], "runtime copied source NAR mismatch"
@@ -167,8 +169,10 @@ def runtime(
         if os.path.lexists(path):
             cache.directory(path)
             cache.require(not any(path.iterdir()), "runtime recreated native Git cache")
-    for pin in lock["pins"].values():
-        path = probe / "Packages" / pin["name"]
+    for key, pin in lock["pins"].items():
+        path = (
+            probe / "Packages" / protocols.installation_name(native_protocol, key, pin)
+        )
         cache.source_tree(path)
         cache.require(
             hash_tree(path) == pin["hash"], "runtime modified projected source"
@@ -213,7 +217,8 @@ def install(
         )
         old = (
             ownership.require_same_family(root, hash_tree)
-            if native_protocol is protocols.WORKSPACE_V4_PATH
+            if native_protocol
+            in (protocols.WORKSPACE_V4_PATH, protocols.WORKSPACE_V5_LOCATION)
             else ownership.existing(root, hash_tree)
         )
         original = ownership.native_state(root) if old is None else old["originalState"]
@@ -290,7 +295,8 @@ def uninstall(
         recover_locked(guard)
         old = (
             ownership.require_same_family(root, hash_tree)
-            if native_protocol is protocols.WORKSPACE_V4_PATH
+            if native_protocol
+            in (protocols.WORKSPACE_V4_PATH, protocols.WORKSPACE_V5_LOCATION)
             else ownership.existing(root, hash_tree)
         )
         if old is None:
@@ -348,7 +354,9 @@ def run_native(
             prefix=native_protocol.name + "-foreground-admission-", dir=state
         ) as temporary:
             sources = {
-                key: root / "Packages" / value["name"]
+                key: root
+                / "Packages"
+                / protocols.installation_name(native_protocol, key, value)
                 for key, value in lock["pins"].items()
             }
             runtime(

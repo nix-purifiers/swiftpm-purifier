@@ -1,0 +1,58 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "alpha",
+          "kind" : "remoteSourceControl",
+          "location" : "http://127.0.0.1:37575/Alpha.git",
+          "name" : "AlphaPkg"
+        },
+        "state" : {
+          "checkoutState" : {
+            "branch" : "main",
+            "revision" : "d574c7a524edcd6818e421300c05dd89ac3b5919"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "Alpha"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "beta",
+          "kind" : "remoteSourceControl",
+          "location" : "http://127.0.0.1:37575/Beta.git",
+          "name" : "BetaPkg"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "440d45180eb4e05fccfcc9ba896c5deae6af4ef2",
+            "version" : "1.0.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "Beta"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "local",
+          "kind" : "fileSystem",
+          "location" : "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-042-release-tools42-branch/project/Local",
+          "name" : "Local"
+        },
+        "state" : {
+          "name" : "fileSystem",
+          "path" : "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift563-042-release-tools42-branch/project/Local"
+        },
+        "subpath" : "local"
+      }
+    ]
+  },
+  "version" : 5
+}
