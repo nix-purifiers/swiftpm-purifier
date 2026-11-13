@@ -126,6 +126,70 @@ jobs:
             ${{ runner.temp }}/checkout2-native/host-default/project/swiftpm-purifier.lock.json
             ${{ runner.temp }}/checkout2-native/external-native
             ${{ runner.temp }}/checkout2-native/external-portable
+  checkout2-swift503-lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        selector: [default, external]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31
+      - name: Prepare the original Swift 5.0 fixture and installed CLI
+        env:
+          FIXTURE_SOURCE: ${{ github.workspace }}
+        run: |
+          nix build --impure --no-link --json --expr '
+            let
+              f = builtins.getFlake ("path:" + builtins.getEnv "FIXTURE_SOURCE");
+              p = import f.inputs.nixpkgs { system = builtins.currentSystem; };
+            in import (f.outPath + "/tests/sdk/swift503/default.nix") { pkgs = p; }
+          ' > "$RUNNER_TEMP/checkout2-swift503-runtime-build.json"
+          runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/checkout2-swift503-runtime-build.json")
+          mkdir -p "$RUNNER_TEMP/checkout2-swift503-sdk-metadata"
+          cp "$runtime/original-tool-bytes.json" "$runtime/original-runtime-bytes.json" "$runtime/original-header-relocations.json" "$RUNNER_TEMP/checkout2-swift503-sdk-metadata/"
+          nix build --impure --no-link --print-out-paths --expr '
+            let
+              f = builtins.getFlake ("path:" + builtins.getEnv "FIXTURE_SOURCE");
+              p = import f.inputs.nixpkgs { system = builtins.currentSystem; };
+            in p.nix-prefetch-git
+          ' > "$RUNNER_TEMP/checkout2-swift503-prefetch-prefix"
+          nix build --no-link --print-out-paths "path:$FIXTURE_SOURCE#default" > "$RUNNER_TEMP/checkout2-swift503-cli-prefix"
+      - name: Exercise cold native and pure builds
+        env:
+          SELECTOR: ${{ matrix.selector }}
+        run: |
+          runtime=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[0]["outputs"]["out"])' "$RUNNER_TEMP/checkout2-swift503-runtime-build.json")
+          prefetch=$(cat "$RUNNER_TEMP/checkout2-swift503-prefetch-prefix")
+          cli=$(cat "$RUNNER_TEMP/checkout2-swift503-cli-prefix")
+          extra=()
+          if [ "$SELECTOR" = external ]; then extra+=(--external); fi
+          python3 tests/checkout2-sdk-headers.py --runtime-prefix "$runtime" --modern-headers /usr/include --output "$RUNNER_TEMP/checkout2-swift503-headers"
+          python3 tests/checkout2-native-constraint.py --runtime-prefix "$runtime" --output "$RUNNER_TEMP/checkout2-swift503-constraint"
+          python3 tests/checkout2-native-lifecycle.py --sdk-epoch swift503 --transitive --runtime-prefix "$runtime" --nix-prefetch-git "$prefetch/bin/nix-prefetch-git" --cli "$cli/bin/swiftpm-purifier" --work "$RUNNER_TEMP/checkout2-swift503-native" "${extra[@]}"
+      - name: Retain checkout2 evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: checkout2-swift503-${{ matrix.selector }}
+          include-hidden-files: true
+          path: |
+            ${{ runner.temp }}/checkout2-swift503-headers/receipt.json
+            ${{ runner.temp }}/checkout2-swift503-headers/*/logs
+            ${{ runner.temp }}/checkout2-swift503-headers/*/control.swift
+            ${{ runner.temp }}/checkout2-swift503-constraint
+            ${{ runner.temp }}/checkout2-swift503-runtime-build.json
+            ${{ runner.temp }}/checkout2-swift503-sdk-metadata
+            ${{ runner.temp }}/checkout2-swift503-native/receipt.json
+            ${{ runner.temp }}/checkout2-swift503-native/logs
+            ${{ runner.temp }}/checkout2-swift503-native/pure-source
+            ${{ runner.temp }}/checkout2-swift503-native/tmp/swiftpm-purifier-legacy-runtime-*/receipt.json
+            ${{ runner.temp }}/checkout2-swift503-native/tmp/swiftpm-purifier-legacy-runtime-*/logs
+            ${{ runner.temp }}/checkout2-swift503-native/host-default/project/Package.resolved
+            ${{ runner.temp }}/checkout2-swift503-native/host-default/project/swiftpm-purifier.lock.json
+            ${{ runner.temp }}/checkout2-swift503-native/external-native
+            ${{ runner.temp }}/checkout2-swift503-native/external-portable
   legacy-state-lifecycle:
     runs-on: ubuntu-latest
     timeout-minutes: 60
