@@ -144,6 +144,7 @@ def lock_file(path):
 class Transaction:
     OPERATION = "capture-update"
     KEEP_PORTABLE = False
+    ALLOW_INTERNAL_SELECTORS = False
 
     def __init__(
         self, root, registry, native=selectors.DEFAULT, portable=selectors.DEFAULT
@@ -163,7 +164,9 @@ class Transaction:
         )
         self.root_id = identity(self.root)
         self.registry_id = identity(self.registry)
-        pin, lock, logical = selectors.pair(self.root, native, portable)
+        pin, lock, logical = selectors.pair(
+            self.root, native, portable, allow_internal=self.ALLOW_INTERNAL_SELECTORS
+        )
         self.paths = [pin.path, lock.path]
         for path in self.paths:
             if path is None:
@@ -487,6 +490,12 @@ class Transaction:
         sync(self.registry)
         fault(callback, "cleanup-reservation-removed")
 
+    def output_allowed(self, record, index, raw, mode, phase):
+        return (raw, mode) in (
+            (decoded(record["old"][index]), record["oldModes"][index]),
+            (decoded(record["new"][index]), record["newModes"][index]),
+        )
+
     def recover(self, callback=None):
         self.check()
         need(
@@ -559,11 +568,7 @@ class Transaction:
         self.guard_control(record, journal["phase"])
         for index, (raw, mode) in enumerate(zip(current, modes)):
             need(
-                (raw, mode)
-                in (
-                    (original[index], record["oldModes"][index]),
-                    (target[index], record["newModes"][index]),
-                ),
+                self.output_allowed(record, index, raw, mode, journal["phase"]),
                 "detected foreign output change",
             )
         if journal["phase"] == "COMMITTED":

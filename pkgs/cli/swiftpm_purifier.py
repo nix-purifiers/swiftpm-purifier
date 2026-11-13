@@ -28,6 +28,7 @@ import native_sdk
 import host_runtime
 import legacy_manifest
 import legacy_runtime
+import legacy_pin_bridge
 import legacy_state
 import pre_workspace
 import pre_workspace_install
@@ -108,6 +109,8 @@ def dependencies_v1_selections(root):
 
 
 def recover_dependencies_v1(root):
+    if legacy_pin_bridge.recover_if_needed(sys.modules[__name__], root):
+        return
     if not dependencies_v1_lifecycle.recovery_hint(root):
         return
     state = dependencies_v1_lifecycle.registry(root, create=False)
@@ -442,9 +445,18 @@ def legacy_local_path_valid(root: Path, portable: str) -> bool:
     return True
 
 
-def legacy_state_lock_valid(root: Path, lock: dict) -> bool:
+_RESOLVED_DEFAULT = object()
+
+
+def legacy_state_lock_valid(
+    root: Path, lock: dict, resolved_override=_RESOLVED_DEFAULT
+) -> bool:
     try:
-        resolved = read_json(resolved_path(root))
+        resolved = (
+            read_json(resolved_path(root))
+            if resolved_override is _RESOLVED_DEFAULT
+            else resolved_override
+        )
     except (json.JSONDecodeError, OSError):
         return False
     pins = lock.get("pins")
@@ -1895,6 +1907,11 @@ def swift_command(arguments):
             elif not logical.exists() or logical.read_bytes() != original:
                 logical.write_bytes(original)
         raise SystemExit(status)
+    if lock["version"] == 4 and lock.get("workspaceStateVersion") == 2:
+        status = legacy_pin_bridge.run_native(
+            sys.modules[__name__], root, [swift, *arguments]
+        )
+        legacy_pin_bridge.exit_status(status)
     # SwiftPM deletes Package.resolved when every dependency is edited,
     # because no pin is left for it to write. The lockfile reads its pins
     # from Package.resolved, so the file goes back after SwiftPM exits.
