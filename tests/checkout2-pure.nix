@@ -18,6 +18,8 @@ let
       import ./sdk/swift413/package-set.nix { inherit pkgs; }
     else if sdkEpoch == "swift503" then
       import ./sdk/swift503/package-set.nix { inherit pkgs; }
+    else if sdkEpoch == "swift515" then
+      import ./sdk/swift515/package-set.nix { inherit pkgs; }
     else
       throw "unknown checkout2 test SDK fixture";
   builder = pkgs.callPackage ../pkgs/build-swiftpm-project { inherit swiftPackages purifier; };

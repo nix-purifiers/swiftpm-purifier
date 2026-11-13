@@ -41,12 +41,13 @@ def main():
     )
     parser.add_argument("--external", action="store_true")
     parser.add_argument(
-        "--sdk-epoch", choices=("swift413", "swift503"), default="swift413"
+        "--sdk-epoch", choices=("swift413", "swift503", "swift515"), default="swift413"
     )
     args = parser.parse_args()
     compiler, package_manager = {
         "swift413": ("4.1.3", "4.1.0"),
         "swift503": ("5.0.3", "5.0.0"),
+        "swift515": ("5.1.5", "5.1.0"),
     }[args.sdk_epoch]
     SDK = args.runtime_prefix.resolve(strict=True)
     if args.nix_prefetch_git is None:
