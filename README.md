@@ -331,6 +331,15 @@ native tools-5.1 constraint control retains both its version diagnostic and
 actual termination status; the observed native SIGILL is not a clean error
 exit or a purifier workaround.
 
+The original Swift 5.1.5 compiler with SwiftPM 5.1.0 is a measured Linux
+fixture using format 4, native dependency-state version 2, and resolved pins
+version 1. Its ordinary SDK wrapper preserves the native `-modulewrap`
+command without adding C importer header flags; the generator records the
+finished wrapper checksum. Default and read-only external pins, native/pure
+XCTest, and explicit static/dynamic and executable consumers use the unchanged
+portable model and builder. The tools-5.2 control records the original native
+diagnostic and actual termination status separately.
+
 Format 8 has no SDK-bound CLI capture or consumption mode; pure builds may
 select an explicit immutable SDK. Formats 4–7 retain their own readers.
 
