@@ -41,6 +41,44 @@ class TypedPublication(WireFixture, unittest.TestCase):
         self.rehash(lock)
         return [protocol.canonical(selected), protocol.canonical(lock)]
 
+    def test_fresh_capture_rollback_restores_retained9_pair_and_native4_state(self):
+        from dependencies_v1_lifecycle import recover_locked
+
+        old = copy.deepcopy(self.lock)
+        old.update(version=9, workspaceStateVersion=3)
+        self.rehash(old)
+        self.portable.write_bytes(protocol.canonical(old) + b"\n")
+        self.portable.chmod(0o640)
+        (self.root / ".build").mkdir()
+        workspace = self.root / ".build/workspace-state.json"
+        workspace.write_bytes(
+            protocol.canonical(protocol.checkout_records(self.lock, self.root))
+        )
+        workspace.chmod(0o600)
+        original_pair = [self.native.read_bytes(), self.portable.read_bytes()]
+        original_modes = [
+            p.stat().st_mode & 0o777 for p in (self.native, self.portable)
+        ]
+        native_snapshot = (
+            workspace.read_bytes(),
+            workspace.stat().st_mode,
+            workspace.stat().st_ino,
+        )
+        self.interrupt_after_first_output()
+        with Transaction(self.root, self.state).locked() as owner:
+            self.assertEqual(recover_locked(owner), "restored-old-pair")
+            self.assertEqual(owner.pair(), original_pair)
+        self.assertEqual(
+            [p.stat().st_mode & 0o777 for p in (self.native, self.portable)],
+            original_modes,
+        )
+        self.assertEqual(
+            (workspace.read_bytes(), workspace.stat().st_mode, workspace.stat().st_ino),
+            native_snapshot,
+        )
+        self.assertFalse((self.root / "Packages").exists())
+        self.assertFalse((self.root / ".build/dependencies-state.json").exists())
+
     def test_capture_publishes_only_validated_portable10_native_pair(self):
         target = self.target()
         with transactions.Capture(self.root, self.state).locked() as owner:

@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 import dependencies_v3 as old
 import native_path_protocols as protocols
@@ -53,14 +54,15 @@ class WorkspacePathCodec(unittest.TestCase):
         return value
 
     def test_cli_detects_complete_path_geometry_and_keeps_empty4_ambiguous(self):
-        self.assertTrue(purifier.workspace_path_candidate(self.native))
+        self.assertTrue(purifier.workspace_path_candidate(self.native, root=self.root))
         later = json.loads(
             (FIXTURE.parent / "native553/workspace-state.json").read_bytes()
         )
-        self.assertFalse(purifier.workspace_path_candidate(later))
+        self.assertFalse(purifier.workspace_path_candidate(later, root=self.root))
         self.assertFalse(
             purifier.workspace_path_candidate(
-                {"version": 4, "object": {"dependencies": [], "artifacts": []}}
+                {"version": 4, "object": {"dependencies": [], "artifacts": []}},
+                root=self.root,
             )
         )
         for mutate in (
@@ -73,7 +75,131 @@ class WorkspacePathCodec(unittest.TestCase):
             value = copy.deepcopy(self.native)
             mutate(value)
             with self.assertRaises(purifier.PurifierError):
-                purifier.workspace_path_candidate(value)
+                purifier.workspace_path_candidate(value, root=self.root)
+
+    def test_cli_local_path_discovery_requires_actual_source_root(self):
+        # Root-containment control; actual local-native execution has separate receipts.
+        value = copy.deepcopy(self.native)
+        value["object"]["dependencies"].append(
+            {
+                "basedOn": None,
+                "packageRef": {
+                    "identity": "localpkg",
+                    "kind": "local",
+                    "name": "LocalPkg",
+                    "path": str(self.root / "LocalPkg"),
+                },
+                "state": {"name": "local"},
+                "subpath": "localpkg",
+            }
+        )
+        self.assertTrue(purifier.workspace_path_candidate(value, root=self.root))
+        wrong = self.root / "DifferentSource"
+        wrong.mkdir()
+        with self.assertRaises(purifier.PurifierError):
+            purifier.workspace_path_candidate(value, root=wrong)
+        with tempfile.TemporaryDirectory() as temporary:
+            probe = Path(temporary)
+            value["object"]["dependencies"][-1]["packageRef"]["path"] = str(
+                probe / "LocalPkg"
+            )
+            self.assertTrue(purifier.workspace_path_candidate(value, root=probe))
+            with self.assertRaises(purifier.PurifierError):
+                purifier.workspace_path_candidate(value, root=self.root)
+
+    def write_migrated_caller(self):
+        value = self.portable()
+        value.update(version=9, workspaceStateVersion=3)
+        value["contentHash"] = old.content_hash(value)
+        (self.root / "swiftpm-purifier.lock.json").write_bytes(old.canonical(value))
+        (self.root / ".build").mkdir()
+        (self.root / ".build/workspace-state.json").write_bytes(
+            old.canonical(self.native)
+        )
+        return value
+
+    def test_uninstalled_native_migration_selects_fresh10_without_deleting_old_pair(
+        self,
+    ):
+        self.write_migrated_caller()
+        paths = [
+            self.root / "swiftpm-purifier.lock.json",
+            self.root / ".build/workspace-state.json",
+        ]
+        before = [p.read_bytes() for p in paths]
+        with (
+            mock.patch.object(purifier, "recover_dependencies_v1"),
+            mock.patch.object(
+                purifier, "relock_dependencies_v3", return_value="selected"
+            ) as capture,
+        ):
+            self.assertEqual(purifier.relock(self.root, ["beta"]), "selected")
+            capture.assert_called_once_with(self.root, ["beta"], 10)
+        self.assertEqual([p.read_bytes() for p in paths], before)
+
+    def test_existing_package_paths_preserve_old_protocol_authority(self):
+        self.write_migrated_caller()
+        packages = self.root / "Packages"
+        for kind in ("foreign", "owned9", "dangling-link"):
+            with self.subTest(kind=kind):
+                if kind == "dangling-link":
+                    packages.symlink_to(self.root / "absent")
+                else:
+                    packages.mkdir()
+                    if kind == "owned9":
+                        (
+                            packages / ".swiftpm-purifier-dependencies-v3-owned.json"
+                        ).write_text("{}")
+                with (
+                    mock.patch.object(purifier, "recover_dependencies_v1"),
+                    mock.patch.object(purifier, "relock_dependencies_v3") as capture,
+                ):
+                    purifier.relock(self.root)
+                    capture.assert_called_once_with(self.root, None)
+                if packages.is_symlink():
+                    packages.unlink()
+                else:
+                    for p in packages.iterdir():
+                        p.unlink()
+                    packages.rmdir()
+
+    def test_legacy_companion_blocks_fresh_selection_even_when_dangling(self):
+        value = self.write_migrated_caller()
+        companion = self.root / ".build/dependencies-state.json"
+        for kind in ("regular", "dangling-link"):
+            with self.subTest(kind=kind):
+                if kind == "regular":
+                    companion.write_text("{}")
+                else:
+                    companion.symlink_to(self.root / "absent")
+                self.assertFalse(purifier.fresh_path_workspace(self.root, value))
+                companion.unlink()
+
+    def test_fresh_discovery_requires_literal9_and_complete_nonempty_path4(self):
+        value = self.write_migrated_caller()
+        for version in (True, 4, 10, "9", None):
+            with self.subTest(version=version):
+                self.assertFalse(
+                    purifier.fresh_path_workspace(
+                        self.root, value | {"version": version}
+                    )
+                )
+        path = self.root / ".build/workspace-state.json"
+        for native in (
+            {"version": 4, "object": {"dependencies": [], "artifacts": []}},
+            json.loads(
+                (FIXTURE.parent / "native553/workspace-state.json").read_bytes()
+            ),
+        ):
+            path.write_bytes(old.canonical(native))
+            self.assertFalse(purifier.fresh_path_workspace(self.root, value))
+        malformed = copy.deepcopy(self.native)
+        malformed["object"]["dependencies"][0]["packageRef"]["location"] = (
+            "https://example.org/mixed"
+        )
+        path.write_bytes(old.canonical(malformed))
+        with self.assertRaises(purifier.PurifierError):
+            purifier.fresh_path_workspace(self.root, value)
 
     def test_original_native_point_and_closed_portable_join(self):
         self.assertEqual(set(workspace.native_index(self.native)), {"alpha", "beta"})

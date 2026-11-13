@@ -1299,7 +1299,7 @@ def product_description(description):
     return result, description["name"]
 
 
-def workspace_path_candidate(value):
+def workspace_path_candidate(value, *, root):
     if (
         not isinstance(value, dict)
         or type(value.get("version")) is not int
@@ -1321,10 +1321,37 @@ def workspace_path_candidate(value):
     if not any(path_refs):
         return False
     try:
-        workspace_v4_path.native_index(value, allow_edited=True, physical_locals=False)
+        workspace_v4_path.native_index(
+            value, root, allow_edited=True, physical_locals=False
+        )
     except (ValueError, OSError) as error:
         raise PurifierError(str(error)) from error
     return True
+
+
+def fresh_path_workspace(root, existing):
+    """Discover native PATH state after the old owned graph was removed.
+
+    This selects a capture protocol only. Its locked ownership and publication
+    guards still determine whether any selected files may be replaced.
+    """
+    if not (
+        isinstance(existing, dict)
+        and type(existing.get("version")) is int
+        and existing["version"] == dependencies_v3.FORMAT
+    ):
+        return False
+    if os.path.lexists(root / "Packages") or os.path.lexists(
+        root / ".build/dependencies-state.json"
+    ):
+        return False
+    path = root / ".build/workspace-state.json"
+    if not os.path.lexists(path):
+        return False
+    value = dependencies_v1_cache.decode(
+        dependencies_v1_cache.regular_bytes(root, ".build/workspace-state.json")
+    )
+    return workspace_path_candidate(value, root=root)
 
 
 def relock(root: Path, update=None):
@@ -1336,6 +1363,8 @@ def relock(root: Path, update=None):
         existing = read_json(lock_path(root))
     except (ValueError, OSError):
         existing = None
+    if fresh_path_workspace(root, existing):
+        return relock_dependencies_v3(root, update, workspace_v4_path.FORMAT)
     if (
         isinstance(existing, dict)
         and type(existing.get("version")) is int
@@ -1353,7 +1382,7 @@ def relock(root: Path, update=None):
         value = dependencies_v1_cache.decode(
             dependencies_v1_cache.regular_bytes(root, ".build/workspace-state.json")
         )
-        if workspace_path_candidate(value):
+        if workspace_path_candidate(value, root=root):
             return relock_dependencies_v3(root, update, workspace_v4_path.FORMAT)
     native_state = root / ".build/dependencies-state.json"
     if (
@@ -1483,7 +1512,7 @@ def relock(root: Path, update=None):
                         "SwiftPM did not produce a recognized dependency-state file"
                     )
         state = json.loads(state_path.read_text())
-        if workspace_path_candidate(state):
+        if workspace_path_candidate(state, root=package):
             return relock_dependencies_v3(root, update, workspace_v4_path.FORMAT)
         if state.get("version") == 1:
             if override_legacy is False:
