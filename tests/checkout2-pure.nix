@@ -41,8 +41,6 @@ let
           name = "${sdkEpoch}-selected-Package.resolved";
         };
       }
-    else if sdkEpoch == "swift515" then
-      import ./sdk/swift515/package-set.nix { inherit pkgs; }
     else
       throw "unknown pure fixture selector";
   result = builder (
