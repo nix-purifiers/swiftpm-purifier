@@ -10,6 +10,7 @@ from dependencies_v1_transaction import Transaction, JOURNAL, read, need, identi
 class NativePinBridge(Transaction):
     OPERATION = "native-pin-bridge"
     KEEP_PORTABLE = True
+    ALLOW_DEFER_COMMIT = True
 
     def __init__(self, root, registry, portable=selectors.DEFAULT):
         super().__init__(root, registry, portable=portable)

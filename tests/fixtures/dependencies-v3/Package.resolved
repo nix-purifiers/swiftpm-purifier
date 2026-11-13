@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "object": {
+    "pins": [
+      {
+        "package": "AlphaPkg",
+        "repositoryURL": "https://example.invalid/Alpha.git",
+        "state": {
+          "branch": null,
+          "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "version": "1.0.0"
+        }
+      }
+    ]
+  }
+}

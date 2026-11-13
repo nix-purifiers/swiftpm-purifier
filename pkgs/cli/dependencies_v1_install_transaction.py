@@ -81,6 +81,12 @@ def sync_tree(root, entries):
 
 
 class Installation(Transaction):
+    INSTALL_OPERATION = "owned-install"
+    INSTALL_EXTRA_FIELDS = frozenset()
+
+    def prepare_install_record(self, record):
+        return record
+
     def __init__(self, root, registry):
         super().__init__(root, registry, native=None)
 
@@ -98,14 +104,15 @@ class Installation(Transaction):
                 "nonce",
                 "old",
                 "new",
-            },
+            }
+            | self.INSTALL_EXTRA_FIELDS,
             "closed install reservation",
         )
         need(
             type(record["version"]) is int
             and record["version"] == 1
-            and record["protocol"] == "dependencies-state-v1"
-            and record["operation"] == "owned-install"
+            and record["protocol"] == self.PROTOCOL
+            and record["operation"] == self.INSTALL_OPERATION
             and isinstance(record["rootIdentity"], list)
             and len(record["rootIdentity"]) == 2
             and all(type(n) is int for n in record["rootIdentity"])
@@ -156,9 +163,11 @@ class Installation(Transaction):
     def role_paths(self, record):
         return [
             self.root / "Packages",
-            self.root / ".build" / "dependencies-state.json"
-            if record["buildIdentity"] is not None
-            else self.root / ".build",
+            (
+                self.root / ".build" / "dependencies-state.json"
+                if record["buildIdentity"] is not None
+                else self.root / ".build"
+            ),
         ]
 
     def stage(self, record):
@@ -411,8 +420,8 @@ class Installation(Transaction):
         build = self.root / ".build"
         record = {
             "version": 1,
-            "protocol": "dependencies-state-v1",
-            "operation": "owned-install",
+            "protocol": self.PROTOCOL,
+            "operation": self.INSTALL_OPERATION,
             "rootIdentity": self.root_id,
             "buildIdentity": identity(build) if os.path.lexists(build) else None,
             "nonce": secrets.token_hex(32),
@@ -421,6 +430,7 @@ class Installation(Transaction):
                 None if source is None else snapshot(Path(source)) for source in sources
             ],
         }
+        record = self.prepare_install_record(record)
         self.validate(record)
         need(self.current(record) == expected, "install inputs changed since planning")
         need(

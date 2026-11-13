@@ -305,6 +305,8 @@ let
       "swiftpm-purifier: ${toString lockFile} has lock format version ${
         toString (lock.version or "none")
       }; this library reads versions 4, ${toString supportedVersion}, 6 and 7. Run `swiftpm-purifier relock` with the swiftpm-purifier revision of this library."
+    else if (lock.workspaceStateVersion or null) == 3 then
+      "swiftpm-purifier: native dependency-state 3 requires portable format 9; formats 4 and 5 cannot describe this protocol. ${relock}"
     else if preWorkspaceFormat && !preWorkspace.valid then
       "swiftpm-purifier: invalid pre-workspace format-7 data, source layout, native absence, or lock destination. ${relock}"
     else if !preWorkspaceFormat && missingFields != [ ] then
@@ -518,7 +520,20 @@ let
     in
     if undotted == "" then "entry" else undotted;
 in
-if builtins.isAttrs lock && (lock.version or null) == 8 then
+if builtins.isAttrs lock && (lock.version or null) == 9 then
+  import ./dependencies-v3-state.nix (
+    {
+      inherit
+        lock
+        src
+        lockFile
+        storeName
+        ;
+      raw = builtins.readFile lockFile;
+    }
+    // (if args ? packageResolved then { inherit packageResolved; } else { })
+  )
+else if builtins.isAttrs lock && (lock.version or null) == 8 then
   import ./dependencies-v1-state.nix (
     {
       inherit

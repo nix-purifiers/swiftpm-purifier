@@ -76,6 +76,13 @@ stdenvNoCC.mkDerivation {
       ./dependencies_v1_snapshot.py
       ./dependencies_v1_selectors.py
       ./dependencies_v1.py
+      ./dependencies_v3.py
+      ./dependencies_v3_observation.py
+      ./dependencies_v3_lifecycle.py
+      ./dependencies_v3_install_transaction.py
+      ./dependencies_v3_ownership.py
+      ./dependencies_v3_capture.py
+      ./dependencies_v3_transaction.py
       ./dependencies_v1_cache.py
       ./dependencies_v1_layout.py
       ./legacy_state.py
@@ -99,6 +106,12 @@ stdenvNoCC.mkDerivation {
       ./test_dependencies_v1_manifest.py
       ./test_dependencies_v1_cache.py
       ./test_dependencies_v1.py
+      ./test_dependencies_v3.py
+      ./test_dependencies_v3_lifecycle.py
+      ./test_dependencies_v3_install_transaction.py
+      ./test_dependencies_v3_ownership.py
+      ./test_dependencies_v3_capture.py
+      ./test_dependencies_v3_transaction.py
       ./test_swiftpm_purifier.py
       ./test_legacy_runtime.py
       ./test_legacy_pin_bridge.py
@@ -115,7 +128,7 @@ stdenvNoCC.mkDerivation {
   doCheck = true;
   checkPhase = ''
     runHook preCheck
-    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_swiftpm_purifier test_legacy_runtime test_legacy_pin_bridge test_dependencies_v1 test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection test_dependencies_v1_ownership test_dependencies_v1_tree_transaction test_dependencies_v1_install_transaction test_dependencies_v1_host test_dependencies_v1_bridge test_dependencies_v1_lifecycle)
+    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_swiftpm_purifier test_legacy_runtime test_legacy_pin_bridge test_dependencies_v1 test_dependencies_v3 test_dependencies_v3_lifecycle test_dependencies_v3_install_transaction test_dependencies_v3_ownership test_dependencies_v3_capture test_dependencies_v3_transaction test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection test_dependencies_v1_ownership test_dependencies_v1_tree_transaction test_dependencies_v1_install_transaction test_dependencies_v1_host test_dependencies_v1_bridge test_dependencies_v1_lifecycle)
     runHook postCheck
   '';
 
@@ -141,6 +154,13 @@ stdenvNoCC.mkDerivation {
     cp pkgs/cli/dependencies_v1_snapshot.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_selectors.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v3.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v3_observation.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v3_lifecycle.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v3_install_transaction.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v3_ownership.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v3_capture.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/dependencies_v3_transaction.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_cache.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/dependencies_v1_layout.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/legacy_state.py $out/libexec/swiftpm-purifier/

@@ -1,0 +1,39 @@
+{
+  "version": 9,
+  "workspaceStateVersion": 3,
+  "package": "Root",
+  "rootDirectory": "project",
+  "products": [
+    {
+      "name": "Run",
+      "type": "executable"
+    }
+  ],
+  "pins": {
+    "alpha": {
+      "name": "AlphaPkg",
+      "sourceLocation": "https://example.invalid/Alpha.git",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "version": "1.0.0",
+      "hash": "sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+  },
+  "localDependencies": [
+    {
+      "basedOn": null,
+      "packageRef": {
+        "identity": "localpkg",
+        "kind": "local",
+        "name": "LocalPkg",
+        "path": "@root@/LocalPkg"
+      },
+      "state": {
+        "name": "local"
+      },
+      "subpath": "localpkg"
+    }
+  ],
+  "binaryTargets": [],
+  "manifestHash": "76ec9671df18eaba8991f0f10d86c9fd2397a43c11da015d41a7d5a64ddf72b7",
+  "contentHash": "sha256-Nw4zQqtTY1ea3qwiRxBvC4CK9ARLFu+VX2iqk6mh2qc="
+}
