@@ -125,6 +125,34 @@ else:
         self.assertFalse((self.root / "Packages").exists())
         self.assertFalse((self.root / ".build").exists())
 
+    def test_companion_native_state_shapes_refused_without_reads(self):
+        before = legacy_runtime.source_fingerprint(self.root)
+        for effect in (
+            "v=json.loads(Path('.build/dependencies-state.json').read_bytes()); v['version']=4; v['object']['artifacts']=[]; Path('.build/workspace-state.json').write_text(json.dumps(v))",
+            "Path('.build/workspace-state.json').symlink_to('dependencies-state.json')",
+            "Path('.build/workspace-state.json').symlink_to('missing-state.json')",
+            "os.mkfifo('.build/workspace-state.json')",
+            "Path('.build/workspace-state.json').mkdir()",
+            "Path('Package.pins').write_text('foreign legacy pins')",
+            "Path('Package.pins').symlink_to('Package.swift')",
+            "os.mkfifo('Package.pins')",
+        ):
+            with self.subTest(effect=effect):
+                with self.assertRaises(ValueError):
+                    self.run_probe(effect)
+                self.assertEqual(legacy_runtime.source_fingerprint(self.root), before)
+                self.assertFalse((self.root / ".build").exists())
+                self.assertFalse((self.root / "Packages").exists())
+
+    def test_preexisting_companion_pins_refused_before_native_session(self):
+        pins = self.root / "Package.pins"
+        pins.write_bytes(b"user legacy input\n")
+        with mock.patch.object(lifecycle, "NativeSession") as native:
+            with self.assertRaisesRegex(ValueError, "mixed native pin format"):
+                self.run_probe("pass")
+            native.assert_not_called()
+        self.assertEqual(pins.read_bytes(), b"user legacy input\n")
+
 
 class SelectedRuntimeAdmission(unittest.TestCase):
     def setUp(self):
@@ -218,6 +246,7 @@ class SelectedRuntimeAdmission(unittest.TestCase):
         for effect in (
             "sys.exit(1)",
             "p=Path('.build/dependencies-state.json'); value=json.loads(p.read_bytes()); value['version']=4; p.write_text(json.dumps(value))",
+            "value=json.loads(Path('.build/dependencies-state.json').read_bytes()); value['version']=4; value['object']['artifacts']=[]; Path('.build/workspace-state.json').write_text(json.dumps(value))",
         ):
             with self.subTest(effect=effect):
                 api = self.delegate_api(effect)
@@ -347,3 +376,68 @@ class SelectedRuntimeAdmission(unittest.TestCase):
         self.assertEqual(status, -signal.SIGTERM)
         self.assertEqual((self.f.root / "Package.resolved").read_bytes(), original)
         self.assertFalse((self.f.root / ".swiftpm-purifier-transaction.json").exists())
+
+    def test_mixed_caller_state_blocks_foreground_and_uninstall_without_changes(self):
+        import stat
+        from dependencies_v1_install_transaction import snapshot
+
+        for kind in ("regular", "symlink", "fifo", "directory", "legacy-pins"):
+            with self.subTest(kind=kind):
+                case = SelectedRuntimeAdmission("runTest")
+                case.setUp()
+                try:
+                    foreign = case.f.root / (
+                        "Package.pins"
+                        if kind == "legacy-pins"
+                        else ".build/workspace-state.json"
+                    )
+                    if kind in ("regular", "legacy-pins"):
+                        foreign.write_bytes(b"foreign native state\n")
+                    elif kind == "symlink":
+                        foreign.symlink_to("dependencies-state.json")
+                    elif kind == "fifo":
+                        os.mkfifo(foreign)
+                    else:
+                        foreign.mkdir()
+                    facts = foreign.lstat()
+                    before = [
+                        snapshot(case.f.root / "Packages"),
+                        snapshot(case.f.root / ".build/dependencies-state.json"),
+                    ]
+                    with (
+                        mock.patch.object(lifecycle, "runtime") as admission,
+                        mock.patch.object(lifecycle, "foreground") as foreground,
+                    ):
+                        with self.assertRaises(ValueError):
+                            lifecycle.run_native(
+                                case.f.root,
+                                case.raw,
+                                ["must-not-run"],
+                                case.hash_tree,
+                                case.f.registry,
+                                api=case.api,
+                            )
+                        admission.assert_not_called()
+                        foreground.assert_not_called()
+                    with self.assertRaises(ValueError):
+                        lifecycle.uninstall(
+                            case.f.root, case.hash_tree, case.f.registry
+                        )
+                    self.assertEqual(
+                        [
+                            snapshot(case.f.root / "Packages"),
+                            snapshot(case.f.root / ".build/dependencies-state.json"),
+                        ],
+                        before,
+                    )
+                    after = foreign.lstat()
+                    self.assertEqual(
+                        (after.st_dev, after.st_ino, after.st_mode),
+                        (facts.st_dev, facts.st_ino, facts.st_mode),
+                    )
+                    if stat.S_ISREG(after.st_mode):
+                        self.assertEqual(
+                            foreign.read_bytes(), b"foreign native state\n"
+                        )
+                finally:
+                    case.doCleanups()

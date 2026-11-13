@@ -87,6 +87,7 @@ def runtime(root, lock, selected_raw, sources, work, api, hash_tree, evidence_pa
     (probe / ".build").mkdir()
     state = protocol.edited_state(protocol.checkout_records(lock, probe), probe)
     (probe / ".build/dependencies-state.json").write_bytes(protocol.canonical(state))
+    ownership.validate_native_layout(probe)
     (work / "tmp").mkdir()
     session = NativeSession(
         probe,
@@ -117,6 +118,7 @@ def runtime(root, lock, selected_raw, sources, work, api, hash_tree, evidence_pa
     session.run("runtime-build", api.native_command("swift-build"))
     source_after = observation.observe(probe, selected_raw, source_before)
     observation.verify(root, caller_before)
+    ownership.validate_native_layout(probe)
     session.receipt.update(
         sourceAfter=source_after["fingerprint"],
         callerAfter=caller_before["fingerprint"],

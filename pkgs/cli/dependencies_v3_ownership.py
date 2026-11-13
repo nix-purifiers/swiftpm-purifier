@@ -25,16 +25,24 @@ FIELDS = {
 }
 
 
-def native_state(root):
+def validate_native_layout(root):
+    """Reject mixed native protocols without opening their state files."""
     root = layout.canonical(root)
     cache.require(not os.path.lexists(root / "Package.pins"), "mixed native pin format")
     build = root / ".build"
+    if os.path.lexists(build):
+        cache.directory(build)
+        cache.require(
+            not os.path.lexists(build / "workspace-state.json"), "mixed native state"
+        )
+    return root
+
+
+def native_state(root):
+    root = validate_native_layout(root)
+    build = root / ".build"
     if not os.path.lexists(build):
         return None
-    cache.directory(build)
-    cache.require(
-        not os.path.lexists(build / "workspace-state.json"), "mixed native state"
-    )
     result = snapshot(build / "dependencies-state.json")
     cache.require(
         result is None or result["kind"] == "regular", "native-v3 state must be regular"
