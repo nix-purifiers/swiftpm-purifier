@@ -26,7 +26,12 @@ let
     else if selector == "root" then
       { packageResolved = src + "/Package.resolved"; }
     else if selector == "external" then
-      { packageResolved = builtins.toPath nativePath; }
+      {
+        packageResolved = builtins.path {
+          path = builtins.toPath nativePath;
+          name = "swift413-selected-Package.resolved";
+        };
+      }
     else
       throw "unknown pure fixture selector";
   result = builder (
