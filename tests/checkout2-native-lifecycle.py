@@ -7,6 +7,7 @@ import hashlib
 import http.server
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -39,7 +40,14 @@ def main():
         help="Root -> Alpha -> Beta actual remote graph",
     )
     parser.add_argument("--external", action="store_true")
+    parser.add_argument(
+        "--sdk-epoch", choices=("swift413", "swift503"), default="swift413"
+    )
     args = parser.parse_args()
+    compiler, package_manager = {
+        "swift413": ("4.1.3", "4.1.0"),
+        "swift503": ("5.0.3", "5.0.0"),
+    }[args.sdk_epoch]
     SDK = args.runtime_prefix.resolve(strict=True)
     if args.nix_prefetch_git is None:
         parser.error("provide the existing nix-prefetch-git executable")
@@ -128,8 +136,25 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
 
-    run("sdk-version", [SDK / "bin/swift", "--version"])
-    run("sdk-package-version", [SDK / "bin/swift-package", "--version"])
+    compiler_raw = run("sdk-version", [SDK / "bin/swift", "--version"])
+    observed_compiler = (
+        re.search(rb"Swift version ([0-9]+\.[0-9]+\.[0-9]+)\b", compiler_raw)
+        .group(1)
+        .decode()
+    )
+    assert observed_compiler == compiler, compiler_raw
+    receipt["compilerObserved"] = observed_compiler
+    package_raw = run("sdk-package-version", [SDK / "bin/swift-package", "--version"])
+    observed_package = (
+        re.search(
+            rb"Swift Package Manager - Swift ([0-9]+\.[0-9]+\.[0-9]+)\b", package_raw
+        )
+        .group(1)
+        .decode()
+    )
+    assert observed_package == package_manager, package_raw
+    receipt["packageManagerObserved"] = observed_package
+    receipt["sdkEpoch"] = args.sdk_epoch
     remote = work / "remote"
     remote.mkdir()
     requests = []
@@ -338,7 +363,7 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
         assert source_manifest() == implementation_files
         receipt.update(
             complete=True,
-            scope="Original Swift4.1.3 / actual SwiftPM4.1.0 native-only same transitive graph with native4.1 URLpackage identity spelling; no capture/projection/portable/installed lifecycle executed.",
+            scope=f"Original Swift{compiler}/SwiftPM{package_manager} native-only transitive graph; no purifier lifecycle executed yet.",
             observedNative=records,
             requests=requests,
         )
@@ -437,6 +462,9 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
                     "--argstr",
                     "sourcePath",
                     pure_source,
+                    "--argstr",
+                    "sdkEpoch",
+                    args.sdk_epoch,
                     *selection_args,
                     "project",
                     "tests",
@@ -515,7 +543,7 @@ let package=Package(name:"PureRoot",products:[.library(name:"Static",type:.stati
             assert (fixture / "Package.resolved").stat().st_mode & 0o777 == 0o600
         receipt.update(
             complete=True,
-            scope="Original Swift4.1.3/SwiftPM4.1.0 selected format4 cold host lifecycle, pure XCTest and explicit product consumers; automatic output is source archive; no inferred product, interval or Darwin claim.",
+            scope=f"Original Swift{compiler}/SwiftPM{package_manager} selected format4 cold host lifecycle, pure XCTest and explicit product consumers; automatic output is source archive; no inferred product, interval or Darwin claim.",
             hostCLI={
                 "executable": str(cli),
                 "portableVersion": 4,

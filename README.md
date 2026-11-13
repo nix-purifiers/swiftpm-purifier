@@ -319,6 +319,15 @@ refuses while those locks are busy. This Linux fixture exercises native and
 pure XCTest, explicit static/dynamic products and an executable. Automatic
 products retain the earlier protocol's source-archive output.
 
+The original Swift 5.0.3 compiler with SwiftPM 5.0.0 is another measured
+Linux fixture using format 4 and native dependency-state version 2. It uses
+the same local CLI and pure builder without a new portable model. Default
+and read-only external pins, native/pure XCTest, and explicit static/dynamic
+library and executable consumers are exercised with the original SDK. The
+native tools-5.1 constraint control retains both its version diagnostic and
+actual termination status; the observed native SIGILL is not a clean error
+exit or a purifier workaround.
+
 Format 8 has no SDK-bound CLI capture or consumption mode; pure builds may
 select an explicit immutable SDK. Formats 4–7 retain their own readers.
 

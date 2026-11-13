@@ -5,6 +5,7 @@
   selector ? "default",
   nativePath ? "",
   configuration ? "release",
+  sdkEpoch ? "swift413",
 }:
 let
   fixture = builtins.getFlake ("path:" + toString ../.);
@@ -12,11 +13,17 @@ let
   purifier = import (fixture.inputs.purifier + "/nix/lib") {
     inherit (pkgs) lib;
   };
-  swiftPackages = import ./sdk/swift413/package-set.nix { inherit pkgs; };
+  swiftPackages =
+    if sdkEpoch == "swift413" then
+      import ./sdk/swift413/package-set.nix { inherit pkgs; }
+    else if sdkEpoch == "swift503" then
+      import ./sdk/swift503/package-set.nix { inherit pkgs; }
+    else
+      throw "unknown checkout2 test SDK fixture";
   builder = pkgs.callPackage ../pkgs/build-swiftpm-project { inherit swiftPackages purifier; };
   src = builtins.path {
     path = builtins.toPath sourcePath;
-    name = "swift413-pure-source";
+    name = "${sdkEpoch}-pure-source";
   };
   selection =
     if selector == "default" then
@@ -29,7 +36,7 @@ let
       {
         packageResolved = builtins.path {
           path = builtins.toPath nativePath;
-          name = "swift413-selected-Package.resolved";
+          name = "${sdkEpoch}-selected-Package.resolved";
         };
       }
     else
@@ -37,7 +44,7 @@ let
   result = builder (
     {
       inherit src;
-      swiftpmPurifierProducts = pkgs.writeText "swift413-native-products.json" (
+      swiftpmPurifierProducts = pkgs.writeText "${sdkEpoch}-native-products.json" (
         builtins.toJSON
           (builtins.fromJSON (builtins.readFile (src + "/swiftpm-purifier.lock.json"))).products
       );
@@ -45,7 +52,7 @@ let
       # The source hash/revision is untouched; a distinct consumer fetch name
       # makes the live controlled origin observable independently of capture.
       fetchers.fetchgit =
-        args: pkgs.fetchgit (args // { name = (args.name or "source") + "-swift413-pure-consumer"; });
+        args: pkgs.fetchgit (args // { name = (args.name or "source") + "-${sdkEpoch}-pure-consumer"; });
     }
     // selection
   );
