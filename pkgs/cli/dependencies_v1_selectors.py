@@ -47,7 +47,7 @@ class Selection:
         )
 
 
-def select(root, value=DEFAULT, *, portable=False):
+def select(root, value=DEFAULT, *, portable=False, allow_internal=False):
     root = layout.canonical(root)
     cache.directory(root)
     if value is None:
@@ -56,7 +56,7 @@ def select(root, value=DEFAULT, *, portable=False):
     default = "swiftpm-purifier.lock.json" if portable else "Package.resolved"
     path = layout.canonical(root / default if value is DEFAULT else value)
     cache.require(
-        path == root / default or not path.is_relative_to(root),
+        allow_internal or path == root / default or not path.is_relative_to(root),
         "selector must be default root or fully external",
     )
     cache.directory(path.parent)
@@ -67,9 +67,9 @@ def select(root, value=DEFAULT, *, portable=False):
     return selected
 
 
-def pair(root, native=DEFAULT, portable=DEFAULT):
-    pin = select(root, native)
-    lock = select(root, portable, portable=True)
+def pair(root, native=DEFAULT, portable=DEFAULT, *, allow_internal=False):
+    pin = select(root, native, allow_internal=allow_internal)
+    lock = select(root, portable, portable=True, allow_internal=allow_internal)
     cache.require(
         pin.path is None or pin.path != lock.path,
         "native and portable selectors coincide",
