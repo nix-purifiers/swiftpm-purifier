@@ -6,6 +6,7 @@ import signal
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import dependencies_v1_cache as cache
 import legacy_pin_bridge as bridge
@@ -104,6 +105,35 @@ class Recovery(unittest.TestCase):
                 finally:
                     restore()
                 self.assertEqual(signal.getsignal(signum), previous)
+
+    def test_spawn_failure_defers_signal_through_real_transaction_recovery(self):
+        root, state, logical = self.exercise(b"original", lambda p: None)
+        with bridge.Bridge(root, state, api).locked() as transaction:
+            transaction.recover()
+        previous = signal.getsignal(signal.SIGTERM)
+        recover = bridge.Bridge.recover
+        observed = []
+
+        def interrupted_recovery(transaction, *args, **kwargs):
+            if transaction.reservation.exists():
+                observed.append(signal.getsignal(signal.SIGTERM) != previous)
+                os.kill(os.getpid(), signal.SIGTERM)
+            return recover(transaction, *args, **kwargs)
+
+        # Isolate admission from this interruption control; publication,
+        # failed spawn, locks, signals and rollback all use the real code.
+        with (
+            patch.object(bridge, "registry", return_value=state),
+            patch.object(bridge, "current"),
+            patch.object(bridge.Bridge, "recover", interrupted_recovery),
+        ):
+            with self.assertRaises(FileNotFoundError):
+                bridge.run_native(api, root, ["/nonexistent/swift"])
+        self.assertEqual(observed, [True])
+        self.assertEqual(logical.read_bytes(), b"original")
+        self.assertEqual(logical.stat().st_mode & 0o777, 0o600)
+        self.assertEqual(signal.getsignal(signal.SIGTERM), previous)
+        self.assertFalse(list(state.glob("*.json")))
 
 
 if __name__ == "__main__":

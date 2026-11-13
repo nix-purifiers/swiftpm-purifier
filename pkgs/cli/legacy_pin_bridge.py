@@ -184,46 +184,58 @@ def current(api, root, raw, native):
     return value
 
 
-def foreground(command, root, descriptors, child_started=None, before_spawn=None):
-    """Forward foreground signals and retain inherited ownership locks."""
-    child = None
-    pending = []
-    previous = {}
+class SignalRelay:
+    def __init__(self):
+        self.child = None
+        self.pending = []
+        self.previous = {}
 
-    def forward(signum, _frame):
-        pending.append(signum)
-        if child is not None and child.poll() is None:
+    def forward(self, signum, _frame):
+        self.pending.append(signum)
+        self.send(signum)
+
+    def send(self, signum):
+        if self.child is not None and self.child.poll() is None:
             try:
-                os.killpg(child.pid, signum)
+                os.killpg(self.child.pid, signum)
             except ProcessLookupError:
                 pass
 
-    # The caller keeps these handlers installed through recovery, not merely
-    # through wait(), by using the returned restoration function.
-    def restore():
-        for signum, handler in previous.items():
+    def install(self):
+        for signum in (signal.SIGINT, signal.SIGTERM):
+            self.previous[signum] = signal.signal(signum, self.forward)
+        return self
+
+    def restore(self):
+        for signum, handler in self.previous.items():
             signal.signal(signum, handler)
 
+
+def foreground(
+    command, root, descriptors, child_started=None, before_spawn=None, relay=None
+):
+    """Forward foreground signals and retain inherited ownership locks."""
+    owned = relay is None
+    relay = SignalRelay().install() if owned else relay
     try:
-        for signum in (signal.SIGINT, signal.SIGTERM):
-            previous[signum] = signal.signal(signum, forward)
         if before_spawn is not None:
             before_spawn()
         child = subprocess.Popen(
             command, cwd=root, start_new_session=True, pass_fds=tuple(descriptors)
         )
-        for signum in pending:
-            if child.poll() is None:
-                os.killpg(child.pid, signum)
+        relay.child = child
+        for signum in relay.pending:
+            relay.send(signum)
         if child_started is not None:
             child_started(child.pid, tuple(descriptors))
-        return child.wait(), restore
+        return child.wait(), relay.restore
     except BaseException:
-        if child is not None:
-            if child.poll() is None:
-                os.killpg(child.pid, signal.SIGKILL)
-            child.wait()
-        restore()
+        if relay.child is not None:
+            if relay.child.poll() is None:
+                relay.send(signal.SIGKILL)
+            relay.child.wait()
+        if owned:
+            relay.restore()
         raise
 
 
@@ -254,13 +266,14 @@ def run_native(
         need(output.raw is not None, "legacy bridge portable input missing")
         current(api, root, output.raw, pin)
         native_mode, portable_mode = selected_mode(pin), selected_mode(output)
-        restore_handlers = lambda: None
+        relay = SignalRelay().install()
         try:
-            status, restore_handlers = foreground(
+            status, _ = foreground(
                 command,
                 root,
                 guard.descriptors,
                 child_started,
+                relay=relay,
                 before_spawn=lambda: bridge.publish(
                     [pin.raw, output.raw], bridge.pair(), defer_commit=True
                 ),
@@ -277,7 +290,7 @@ def run_native(
                     raise
                 bridge.recover()
             finally:
-                restore_handlers()
+                relay.restore()
         if pin.path != logical.path:
             verify(pin, native_mode)
         verify(output, portable_mode)
