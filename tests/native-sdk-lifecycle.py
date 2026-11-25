@@ -31,6 +31,14 @@ def provisioning_files(metadata, logs):
         "foundation-internationalization": swift
         / "lib/libFoundationInternationalization.so",
     }
+    for label, key, program in [
+        ("cc-wrapper", "ccWrapper", "clang"),
+        ("cc-tool", "ccTool", "clang"),
+        ("ld-wrapper", "ldWrapper", "ld"),
+        ("ld-tool", "ldTool", "ld"),
+    ]:
+        if key in metadata:
+            paths[label] = Path(metadata[key]) / "bin" / program
     for index, root in enumerate(metadata["icu"]):
         for name in ["icucore", "icuuc", "icui18n", "icudata", "icuio"]:
             paths[f"icu-{index}-{name}"] = Path(root) / "lib" / f"lib{name}.so"
@@ -272,6 +280,10 @@ def main():
                           environmentShell = cli.nativeSDKDescriptor.environmentShell;
                           swift = toString swiftPackages.swift;
                           swiftpm = toString swiftPackages.swiftpm;
+                          ccWrapper = toString swiftPackages.stdenv.cc;
+                          ccTool = toString swiftPackages.stdenv.cc.cc;
+                          ldWrapper = toString swiftPackages.stdenv.cc.bintools;
+                          ldTool = toString swiftPackages.stdenv.cc.bintools.bintools;
                           icu = if swiftPackages ? swift-foundation-icu
                             then map toString (swiftPackages.swift-foundation-icu.propagatedBuildInputs or [])
                             else [];
@@ -291,6 +303,33 @@ def main():
                 "files": provisioning_files(provisioning, work / "logs"),
                 "callerLinkEnvironment": {
                     name: env[name] for name in names if name in env
+                },
+                "callerToolSelection": {
+                    name: env[name]
+                    for name in [
+                        "CC",
+                        "CXX",
+                        "LD",
+                        "LD_FOR_TARGET",
+                        "SDKROOT",
+                        "DEVELOPER_DIR",
+                        "TOOLCHAINS",
+                        "SWIFT_DRIVER_CLANG_EXEC",
+                        "SWIFT_DRIVER_SWIFT_FRONTEND_EXEC",
+                    ]
+                    if name in env
+                },
+                "callerWrapperRoles": {
+                    name: env[name]
+                    for name in [
+                        "NIX_CC_WRAPPER_TARGET_BUILD_x86_64_unknown_linux_gnu",
+                        "NIX_CC_WRAPPER_TARGET_HOST_x86_64_unknown_linux_gnu",
+                        "NIX_CC_WRAPPER_TARGET_TARGET_x86_64_unknown_linux_gnu",
+                        "NIX_BINTOOLS_WRAPPER_TARGET_BUILD_x86_64_unknown_linux_gnu",
+                        "NIX_BINTOOLS_WRAPPER_TARGET_HOST_x86_64_unknown_linux_gnu",
+                        "NIX_BINTOOLS_WRAPPER_TARGET_TARGET_x86_64_unknown_linux_gnu",
+                    ]
+                    if name in env
                 },
             }
             save()
@@ -320,7 +359,21 @@ def main():
                 label, [cli, "--package-path", str(directory), *arguments], directory
             )
 
-        purifier("cold-lock", ["lock"])
+        if args.epoch == "default":
+            # Level 1 prints cc/ld wrapper argv; it adds no compiler/linker flags.
+            previous_debug = env.get("NIX_DEBUG")
+            env["NIX_DEBUG"] = "1"
+            receipt["sdkProvisioning"]["wrapperTraceRequested"] = 1
+            save()
+            try:
+                purifier("cold-lock", ["lock"])
+            finally:
+                if previous_debug is None:
+                    env.pop("NIX_DEBUG", None)
+                else:
+                    env["NIX_DEBUG"] = previous_debug
+        else:
+            purifier("cold-lock", ["lock"])
         saved_files = {
             name: (project / name).read_bytes()
             for name in ["Package.resolved", "swiftpm-purifier.lock.json"]
