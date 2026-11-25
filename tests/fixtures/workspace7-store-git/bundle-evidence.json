@@ -1,0 +1,9 @@
+{
+  "scope": "Single-outer-directory tar wrapper for normal builtins.fetchTarball, same actual263 reconstructed contents after stripping outer dir; runtime fetchTarball reconstruction not yet tested",
+  "bundleSHA256": "b9d2fd0fe58174da21581d28dc4e1a8ee167925a9bb5fe773e8a46c55ffb913a",
+  "bundleBytes": 22734,
+  "members": 83,
+  "strippedNarHash": "sha256-iUmfulaotgbjNyywul82eOjtHbCq/keim9qg5sRBCOQ=",
+  "narEvidenceProofSHA256": "605685b7de8fdca92420590052b2782a323042069cb6ce2e7499a1f7c45b15c9",
+  "originalArchiveSHA256": "50b40db5b40e12348327368e82c922dd3be9a01d819789abfda535acfbbac10e"
+}

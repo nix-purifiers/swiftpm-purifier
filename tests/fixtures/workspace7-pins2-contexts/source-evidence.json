@@ -1,0 +1,118 @@
+{
+  "scope": "Authentic original SDK tools5.9 native7/pins2 branch/revision/mixedlocal snapshots; native evidence only, no purifier compatibility or edited lifecycle claim",
+  "proofSHA256": "39e0f79b4dba1199ce7ce18455682bf2777316aa87844cc8f91fa736e1abc2c3",
+  "proofPath": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift642-144-native-pins2-matrix-proof.json",
+  "contexts": {
+    "branch": {
+      "originalRoot": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift642-126-pins2-variants-output/caller-branch",
+      "filesSHA256": {
+        "Package.swift": "99b28ca5e6a2dc84c3a0948660cb7fe11aaff69d2f0c51a71326232f3354217f",
+        "Package.resolved": "c439871c74ae33e2cd61adb7748357d2a05cf5c7d2208626fd34e903aac733d2",
+        "workspace-state.json": "d841417ac2063101124a1842f6b3b8cee4a20dab2da3964a514a6aae1655609e",
+        "Sources/PureApp/main.swift": "9f04200c360f9994da6f051c56925dd996526e1bf4ab2178c198ca2a8399f32b"
+      },
+      "ownedOriginalRoot": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift642-148-pins2-owned-contexts-output/caller-branch",
+      "ownedSnapshots": {
+        "initial.state.json": {
+          "sha256": "d841417ac2063101124a1842f6b3b8cee4a20dab2da3964a514a6aae1655609e"
+        },
+        "initial.pins.json": {
+          "sha256": "c439871c74ae33e2cd61adb7748357d2a05cf5c7d2208626fd34e903aac733d2"
+        },
+        "edited.state.json": {
+          "sha256": "b79544d60a0d7ab0aacf4a2b3b66c5b129faebdfe8a642c8e1859023a322a8cf"
+        },
+        "edited.pins.json": {
+          "sha256": "f06c8f59d8f15153e47443cbe97da70e9ab3544be9fb51795c8754660cfa248f"
+        },
+        "edited-after-build.state.json": {
+          "sha256": "b79544d60a0d7ab0aacf4a2b3b66c5b129faebdfe8a642c8e1859023a322a8cf"
+        },
+        "edited-after-build.pins": {
+          "absent": true
+        },
+        "unedited.state.json": {
+          "sha256": "d841417ac2063101124a1842f6b3b8cee4a20dab2da3964a514a6aae1655609e"
+        },
+        "unedited.pins.json": {
+          "sha256": "c439871c74ae33e2cd61adb7748357d2a05cf5c7d2208626fd34e903aac733d2"
+        }
+      }
+    },
+    "revision": {
+      "originalRoot": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift642-126-pins2-variants-output/caller-revision",
+      "filesSHA256": {
+        "Package.swift": "6a4af5d000e5ee87dcb225b63249738f5a58c26fe17dbab327d384db43d30a53",
+        "Package.resolved": "4a4621af9f755e06a713aef3f2f4e4b836bb93764cbc99f9cff3135ab9e0b128",
+        "workspace-state.json": "16128a89948d9843d9d0ebe8e99625347019e383dcdb0d79f148fa4f9b44aca8",
+        "Sources/PureApp/main.swift": "9f04200c360f9994da6f051c56925dd996526e1bf4ab2178c198ca2a8399f32b"
+      },
+      "ownedOriginalRoot": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift642-148-pins2-owned-contexts-output/caller-revision",
+      "ownedSnapshots": {
+        "initial.state.json": {
+          "sha256": "16128a89948d9843d9d0ebe8e99625347019e383dcdb0d79f148fa4f9b44aca8"
+        },
+        "initial.pins.json": {
+          "sha256": "4a4621af9f755e06a713aef3f2f4e4b836bb93764cbc99f9cff3135ab9e0b128"
+        },
+        "edited.state.json": {
+          "sha256": "a5359663f6507e86b593d8d39cde86399caf6b11f50535ba3a1717c85421021b"
+        },
+        "edited.pins.json": {
+          "sha256": "f06c8f59d8f15153e47443cbe97da70e9ab3544be9fb51795c8754660cfa248f"
+        },
+        "edited-after-build.state.json": {
+          "sha256": "a5359663f6507e86b593d8d39cde86399caf6b11f50535ba3a1717c85421021b"
+        },
+        "edited-after-build.pins": {
+          "absent": true
+        },
+        "unedited.state.json": {
+          "sha256": "16128a89948d9843d9d0ebe8e99625347019e383dcdb0d79f148fa4f9b44aca8"
+        },
+        "unedited.pins.json": {
+          "sha256": "4a4621af9f755e06a713aef3f2f4e4b836bb93764cbc99f9cff3135ab9e0b128"
+        }
+      }
+    },
+    "local": {
+      "originalRoot": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift642-126-pins2-variants-output/caller-local",
+      "filesSHA256": {
+        "Package.swift": "e3c498ef139267749e7d5f167ef29a5bcd01ee6d5dcfb6f3349633b4e3ec57f6",
+        "Package.resolved": "beb47d4665624cad73c5d2fb4c3fd059eb069312900854847adbfe5394fa08c7",
+        "workspace-state.json": "39d6fe444d7a36ab98cca4cb158cc83cab5749ca0909e97cd77500e0c0fa9514",
+        "Sources/PureApp/main.swift": "22c68cc0ed6f3ace546efb30665ad7e3f8d0c0e0f47508874623c12ef967debb",
+        "Local/Package.swift": "98e6ebf4dd59ac0b69bd2e4d1fcf5d25ab1106f5561d72c5e4da10ec8c3b3b9c",
+        "Local/Sources/Extras/Extras.swift": "ee0b763c07204b8d65d9df080a5dc156097afa0e01652d7a3071fe90b60a7a4c"
+      },
+      "ownedOriginalRoot": "/home/chris/.codex/state/purifier-toolchains/swiftpm-audit/swift642-148-pins2-owned-contexts-output/caller-local",
+      "ownedSnapshots": {
+        "initial.state.json": {
+          "sha256": "fef04a2e770984fb0d12f21af5ed3a85e144fa9dfb9dff130edd7773d4061c1b"
+        },
+        "initial.pins.json": {
+          "sha256": "beb47d4665624cad73c5d2fb4c3fd059eb069312900854847adbfe5394fa08c7"
+        },
+        "edited.state.json": {
+          "sha256": "f3ed1132f4c9294a0ab66a4c7f297486d4e0dc5971f129c89a9f5dc1610f380b"
+        },
+        "edited.pins.json": {
+          "sha256": "f06c8f59d8f15153e47443cbe97da70e9ab3544be9fb51795c8754660cfa248f"
+        },
+        "edited-after-build.state.json": {
+          "sha256": "f3ed1132f4c9294a0ab66a4c7f297486d4e0dc5971f129c89a9f5dc1610f380b"
+        },
+        "edited-after-build.pins": {
+          "absent": true
+        },
+        "unedited.state.json": {
+          "sha256": "fef04a2e770984fb0d12f21af5ed3a85e144fa9dfb9dff130edd7773d4061c1b"
+        },
+        "unedited.pins.json": {
+          "sha256": "beb47d4665624cad73c5d2fb4c3fd059eb069312900854847adbfe5394fa08c7"
+        }
+      }
+    }
+  },
+  "ownedProofSHA256": "ef7f27b17f7916e084e52fc46858ca6d368d3703ceb8d0a5326f12f9add82a6d"
+}

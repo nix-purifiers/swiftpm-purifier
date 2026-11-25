@@ -1,0 +1,9 @@
+{
+  "scope": "Original SDK6.4.2/tools5.9 native fixture only; no purifier/FOD support claim",
+  "partialProofSHA256": "8fdc6a4b91eca2cd5e667d037251954b7c82da2556434d3ff803b2fc0e990651",
+  "files": {
+    "Package.swift": "dcef5e89edd338850973841ff44513cd3c2988544a907b36d0ab69cf94c40f19",
+    "Package.resolved": "af1b78f2b92cdcf6d54277e31d74ce0bce8f545dca8f36a21aacee1427025f96",
+    "workspace-state.json": "d91310da4e00582e9f270f36d19c3602306cfef65851437f7a4bb7c1e4242c41"
+  }
+}

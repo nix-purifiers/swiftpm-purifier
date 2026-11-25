@@ -191,6 +191,12 @@ def candidate(api, temporary, environment):
         "commit.gpgsign=false",
         "-c",
         "tag.gpgsign=false",
+        # This repository only observes the native protocol. Background Git
+        # maintenance must not outlive its owned probe session.
+        "-c",
+        "gc.auto=0",
+        "-c",
+        "maintenance.auto=false",
     ]
     session.run("protocol-git-init", [*git, "init", str(leaf)])
     session.run("protocol-git-add", [*git, "-C", str(leaf), "add", "."])

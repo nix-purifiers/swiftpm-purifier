@@ -203,14 +203,24 @@ let
           mkdir -p "$HOME"
           export CLANG_MODULE_CACHE_PATH=$TMPDIR/clang-module-cache
           export SWIFT_EXEC=${swift}/bin/swiftc
-          ${lib.optionalString (read.nativeSDK == null && read.lockVersion != 7) ''
-            # Portable locks carry no SDK capability attestation. Ask the
-            # actual selected build command before adding a native flag.
-            nativePrebuiltFlag=$(${lib.getExe python3} -c 'import sys; sys.path.insert(0,sys.argv[1]); import swiftpm_purifier as sp; print("--disable-experimental-prebuilts" if "--disable-experimental-prebuilts" in sp.native_options((sys.argv[2],"build"),None) else "")' ${../../pkgs/cli} ${swift}/bin/swift)
-            if [ -n "$nativePrebuiltFlag" ]; then
-              appendToVar swiftpmFlags "$nativePrebuiltFlag"
-            fi
-          ''}
+          ${lib.optionalString
+            (
+              read.nativeSDK == null
+              && !(builtins.elem read.lockVersion [
+                7
+                12
+                13
+              ])
+            )
+            ''
+              # Portable locks carry no SDK capability attestation. Ask the
+              # actual selected build command before adding a native flag.
+              nativePrebuiltFlag=$(${lib.getExe python3} -c 'import sys; sys.path.insert(0,sys.argv[1]); import swiftpm_purifier as sp; print("--disable-experimental-prebuilts" if "--disable-experimental-prebuilts" in sp.native_options((sys.argv[2],"build"),None) else "")' ${../../pkgs/cli} ${swift}/bin/swift)
+              if [ -n "$nativePrebuiltFlag" ]; then
+                appendToVar swiftpmFlags "$nativePrebuiltFlag"
+              fi
+            ''
+          }
           ${lib.optionalString (read.nativeSDK != null) ''
             echo "swiftpm-purifier: verifying selected native SDK"
             ${lib.getExe python3} ${../../pkgs/cli}/verify_sdk.py \
@@ -219,6 +229,24 @@ let
             echo "swiftpm-purifier: selected native SDK verified"
           ''}
           ${linkTree}
+          ${lib.optionalString ((read.storeGitSources or [ ]) != [ ]) ''
+            # This is the isolated Nix builder's policy, never the caller CLI's.
+            # The tree has direct validation dependencies even when FODs are cached.
+            ${lib.getExe python3} - ${tree}/store-git-sources.json "$TMPDIR/store-gitconfig" <<'PYCONFIG'
+            import json, os, sys
+            from pathlib import Path
+            bindings=json.loads(Path(sys.argv[1]).read_text())
+            lines=["[core]", "\thooksPath = /dev/null", "[safe]"]
+            for binding in bindings:
+                source=binding["storeSource"]
+                lines.append("\tdirectory = "+json.dumps(source["path"]+"/"+source["subdirectory"]))
+            path=Path(sys.argv[2]);path.write_text("\n".join(lines)+"\n");path.chmod(0o600)
+            PYCONFIG
+            unset GIT_CONFIG_PARAMETERS GIT_CONFIG_COUNT GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR
+            unset GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_REPLACE_REF_BASE
+            export GIT_CONFIG_GLOBAL="$TMPDIR/store-gitconfig"
+            export GIT_CONFIG_SYSTEM=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_NO_REPLACE_OBJECTS=1
+          ''}
         ''
         # The macOS linker writes a debug map into each binary, which names
         # the object and source files under the build directory, and the
@@ -252,7 +280,12 @@ let
             for library in ${lib.escapeShellArgs staticLibraries}; do
               install -D -t "$out/lib" "$products/lib$library.a"
               for module in "$products"/Modules/*.swiftmodule "$products"/*.swiftmodule; do
-                [ -e "$module" ] && install -D -t "$out/lib/swift/${stdenv.hostPlatform.parsed.kernel.name}" "$module"
+                if [ -d "$module" ]; then
+                  mkdir -p "$out/lib/swift/${stdenv.hostPlatform.parsed.kernel.name}"
+                  cp -RL "$module" "$out/lib/swift/${stdenv.hostPlatform.parsed.kernel.name}/"
+                elif [ -e "$module" ]; then
+                  install -D -t "$out/lib/swift/${stdenv.hostPlatform.parsed.kernel.name}" "$module"
+                fi
               done
             done
           ''

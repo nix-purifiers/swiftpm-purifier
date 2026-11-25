@@ -1,7 +1,124 @@
 # SPDX-License-Identifier: MIT
 """Bound direct-child exit and inherited pipe EOF; kill only an owned group."""
 
-import os, selectors, signal, subprocess, time, types
+import contextlib
+import os
+import selectors
+import signal
+import subprocess
+import threading
+import time
+import types
+
+
+class Termination(BaseException):
+    """Unwind owned cleanup before retaining the original termination status."""
+
+    def __init__(self, signum):
+        self.signum = signum
+        super().__init__(f"command interrupted by signal {signum}")
+
+
+class _DefaultTermination:
+    def __init__(self):
+        self.depth = 0
+        self.pending = None
+        self.unwinding = False
+
+    def __call__(self, signum, _frame):
+        if self.unwinding:
+            return
+        if self.depth:
+            self.pending = signum
+        else:
+            self.unwinding = True
+            raise Termination(signum)
+
+    @contextlib.contextmanager
+    def registering(self):
+        self.depth += 1
+        try:
+            yield
+        finally:
+            self.depth -= 1
+            if not self.depth and self.pending is not None:
+                signum, self.pending = self.pending, None
+                self.unwinding = True
+                raise Termination(signum)
+
+
+@contextlib.contextmanager
+def default_sigterm():
+    """Unwind a CLI's default SIGTERM; preserve custom foreground relays."""
+    previous = signal.getsignal(signal.SIGTERM)
+    if (
+        threading.current_thread() is not threading.main_thread()
+        or previous != signal.SIG_DFL
+    ):
+        yield
+        return
+    handler = _DefaultTermination()
+    signal.signal(signal.SIGTERM, handler)
+    try:
+        yield
+    except Termination as error:
+        signal.signal(signal.SIGTERM, previous)
+        os.kill(os.getpid(), error.signum)
+        raise SystemExit(128 + error.signum)
+    finally:
+        if signal.getsignal(signal.SIGTERM) is handler:
+            signal.signal(signal.SIGTERM, previous)
+
+
+def _registration():
+    handler = signal.getsignal(signal.SIGTERM)
+    return (
+        handler.registering()
+        if isinstance(handler, _DefaultTermination)
+        else contextlib.nullcontext()
+    )
+
+
+def _cleanup_child(child):
+    if child is None:
+        return
+    try:
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        child.wait(timeout=5)
+    finally:
+        for stream in [child.stdin, child.stdout, child.stderr]:
+            if stream is not None:
+                stream.close()
+
+
+def run_command(
+    args, *, input=None, capture_output=False, timeout=None, check=False, **options
+):
+    """Preserve subprocess.run streams and statuses while owning its group."""
+    if input is not None:
+        if "stdin" in options:
+            raise ValueError("stdin and input arguments may not both be used")
+        options["stdin"] = subprocess.PIPE
+    if capture_output:
+        if "stdout" in options or "stderr" in options:
+            raise ValueError("capture_output conflicts with stdout or stderr")
+        options["stdout"] = options["stderr"] = subprocess.PIPE
+    if options.pop("start_new_session", True) is not True:
+        raise ValueError("owned commands require a private process group")
+    child = None
+    try:
+        with _registration():
+            child = subprocess.Popen(args, start_new_session=True, **options)
+        stdout, stderr = child.communicate(input, timeout=timeout)
+        result = subprocess.CompletedProcess(args, child.returncode, stdout, stderr)
+        if check:
+            result.check_returncode()
+        return result
+    finally:
+        _cleanup_child(child)
 
 
 def run(
@@ -13,14 +130,12 @@ def run(
     cwd=None,
     protocol_fd_flag=None,
 ):
-    """Optionally capture a native protocol on its own inherited descriptor.
-
-    The protocol shares the output bound and the child/pipe deadline. Its
-    descriptor is appended with the native flag; stdout remains independent.
-    """
+    """Capture independent protocol bytes under the child and pipe deadline."""
     protocol_stream = None
     command = args
     inherited = ()
+    child = None
+    selector = None
     if protocol_fd_flag is not None:
         if not isinstance(protocol_fd_flag, str) or not protocol_fd_flag:
             raise ValueError("invalid protocol descriptor flag")
@@ -28,30 +143,27 @@ def run(
         protocol_stream = os.fdopen(read_fd, "rb", buffering=0)
         inherited = (write_fd,)
         command = [*args, protocol_fd_flag, str(write_fd)]
+    output = [bytearray() for _ in range(3 if protocol_stream is not None else 2)]
     try:
-        child = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env,
-            cwd=cwd,
-            start_new_session=True,
-            pass_fds=inherited,
-        )
-    except BaseException:
+        # A signal during Popen must wait until the created child is tracked.
+        with _registration():
+            child = subprocess.Popen(
+                command,
+                stdin=subprocess.PIPE if input is not None else subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env,
+                cwd=cwd,
+                start_new_session=True,
+                pass_fds=inherited,
+            )
+            if inherited:
+                descriptor, inherited = inherited[0], ()
+                os.close(descriptor)
+        streams = [child.stdout, child.stderr]
         if protocol_stream is not None:
-            protocol_stream.close()
-        raise
-    finally:
-        if inherited:
-            os.close(inherited[0])
-    streams = [child.stdout, child.stderr]
-    if protocol_stream is not None:
-        streams.append(protocol_stream)
-    selector = selectors.DefaultSelector()
-    output = [bytearray() for _ in streams]
-    try:
+            streams.append(protocol_stream)
+        selector = selectors.DefaultSelector()
         if input is not None:
             assert len(input) <= 4096
             child.stdin.write(input)
@@ -79,7 +191,7 @@ def run(
             stderr=bytes(output[1]),
             protocol=bytes(output[2]) if protocol_stream is not None else b"",
         )
-    except Exception as error:
+    except (Exception, Termination) as error:
         error.stdout = bytes(output[0])
         error.stderr = bytes(output[1])
         error.protocol = bytes(output[2]) if protocol_stream is not None else b""
@@ -87,13 +199,16 @@ def run(
         raise
     finally:
         try:
-            os.killpg(child.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        child.wait(timeout=5)
-        selector.close()
-        for stream in streams:
-            stream.close()
+            if inherited:
+                os.close(inherited[0])
+        finally:
+            try:
+                _cleanup_child(child)
+            finally:
+                if selector is not None:
+                    selector.close()
+                if protocol_stream is not None:
+                    protocol_stream.close()
 
 
 def run_recorded(argv, *, record, logs, save, **options):
@@ -103,7 +218,7 @@ def run_recorded(argv, *, record, logs, save, **options):
     failure = None
     try:
         result = run(argv, **options)
-    except Exception as error:
+    except (Exception, Termination) as error:
         failure = error
         result = types.SimpleNamespace(
             args=getattr(error, "command_args", argv),

@@ -14,11 +14,27 @@ def codec(protocol):
         import workspace_v5_location
 
         return workspace_v5_location
+    if protocol is protocols.WORKSPACE_V7_PINS3:
+        import workspace_v7_pins3
+
+        return workspace_v7_pins3
+    if protocol is protocols.WORKSPACE_V7_PINS2:
+        import workspace_v7_pins2
+
+        return workspace_v7_pins2
     return workspace_v4_path
 
 
 def ownership(protocol):
     protocol = protocols.checked(protocol)
+    if protocol is protocols.WORKSPACE_V7_PINS2:
+        import workspace_v7_pins2_ownership
+
+        return workspace_v7_pins2_ownership
+    if protocol is protocols.WORKSPACE_V7_PINS3:
+        import workspace_v7_pins3_ownership
+
+        return workspace_v7_pins3_ownership
     if protocol is protocols.DEPENDENCIES_V3:
         import dependencies_v3_ownership
 
@@ -38,6 +54,10 @@ def installation(protocol):
         from dependencies_v3_install_transaction import Installation
     elif protocol is protocols.WORKSPACE_V5_LOCATION:
         from workspace_v5_location_install_transaction import Installation
+    elif protocol is protocols.WORKSPACE_V7_PINS3:
+        from workspace_v7_pins3_install_transaction import Installation
+    elif protocol is protocols.WORKSPACE_V7_PINS2:
+        from workspace_v7_pins2_install_transaction import Installation
     else:
         from workspace_v4_path_install_transaction import Installation
     return Installation
@@ -49,6 +69,10 @@ def bridge(protocol):
         from dependencies_v3_transaction import Bridge
     elif protocol is protocols.WORKSPACE_V5_LOCATION:
         from workspace_v5_location_transaction import Bridge
+    elif protocol is protocols.WORKSPACE_V7_PINS3:
+        from workspace_v7_pins3_transaction import Bridge
+    elif protocol is protocols.WORKSPACE_V7_PINS2:
+        from workspace_v7_pins2_transaction import Bridge
     else:
         from workspace_v4_path_transaction import Bridge
     return Bridge

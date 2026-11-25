@@ -1,0 +1,73 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : {
+          "basedOn" : null,
+          "packageRef" : {
+            "identity" : "alpha",
+            "kind" : "localSourceControl",
+            "location" : "/nix/store/krp7vr3lh5yv37z0s2lk8nmwjqf3ksis-purifier-alpha-git-fixture/alpha.git",
+            "name" : "Alpha"
+          },
+          "state" : {
+            "checkoutState" : {
+              "revision" : "6dfb4a7fdbd761e179d886f1d67f23ab89d64dad",
+              "version" : "1.0.0"
+            },
+            "name" : "sourceControlCheckout"
+          },
+          "subpath" : "alpha"
+        },
+        "packageRef" : {
+          "identity" : "alpha",
+          "kind" : "localSourceControl",
+          "location" : "/nix/store/krp7vr3lh5yv37z0s2lk8nmwjqf3ksis-purifier-alpha-git-fixture/alpha.git",
+          "name" : "Alpha"
+        },
+        "state" : {
+          "name" : "edited",
+          "path" : null
+        },
+        "subpath" : "alpha"
+      },
+      {
+        "basedOn" : {
+          "basedOn" : null,
+          "packageRef" : {
+            "identity" : "beta",
+            "kind" : "localSourceControl",
+            "location" : "/nix/store/8rf90rkvqmj48s1290w5m54hv0bp6nai-purifier-beta-git-fixture/beta.git",
+            "name" : "Beta"
+          },
+          "state" : {
+            "checkoutState" : {
+              "revision" : "77d406683c894aebe9f34a1e1dfd93936b54c353",
+              "version" : "1.0.0"
+            },
+            "name" : "sourceControlCheckout"
+          },
+          "subpath" : "beta"
+        },
+        "packageRef" : {
+          "identity" : "beta",
+          "kind" : "localSourceControl",
+          "location" : "/nix/store/8rf90rkvqmj48s1290w5m54hv0bp6nai-purifier-beta-git-fixture/beta.git",
+          "name" : "Beta"
+        },
+        "state" : {
+          "name" : "edited",
+          "path" : null
+        },
+        "subpath" : "beta"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

@@ -1,0 +1,23 @@
+{
+  "pins" : [
+    {
+      "identity" : "alpha",
+      "kind" : "remoteSourceControl",
+      "location" : "http://127.0.0.1:41277/alpha.git",
+      "state" : {
+        "revision" : "d39a104ef03b48485b915be8a361ca835b8c78d9",
+        "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "beta",
+      "kind" : "remoteSourceControl",
+      "location" : "http://127.0.0.1:41277/beta.git",
+      "state" : {
+        "revision" : "e8b9e751898907fb37948ea850cd90dafc38962c",
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 2
+}

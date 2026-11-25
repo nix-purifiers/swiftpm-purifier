@@ -119,6 +119,9 @@ in
   dependencies-v3-codec = (import ./dependencies-v3.nix { inherit pkgs; }).test;
   workspace-v4-path-codec = (import ./workspace-v4-path.nix { inherit pkgs; }).test;
   workspace-v5-location-codec = (import ./workspace-v5-location.nix { inherit pkgs; }).test;
+  module-install-layouts = import ./module-layout.nix { inherit pkgs; };
+  workspace-v7-store-fixtures = import ./workspace-v7-store-fixtures.nix { inherit pkgs; };
+  workspace-v7-store-codec = import ./workspace-v7-store-codec.nix { inherit pkgs; };
   native-projections = import ./native-projections.nix {
     inherit pkgs;
     build = build;

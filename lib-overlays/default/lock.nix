@@ -526,6 +526,8 @@ if
     9
     10
     11
+    12
+    13
   ]
 then
   import
@@ -534,8 +536,12 @@ then
         ./dependencies-v3-state.nix
       else if lock.version == 10 then
         ./workspace-v4-path-state.nix
-      else
+      else if lock.version == 11 then
         ./workspace-v5-location-state.nix
+      else if lock.version == 12 then
+        ./workspace-v7-pins3-state.nix
+      else
+        ./workspace-v7-pins2-state.nix
     )
     (
       {

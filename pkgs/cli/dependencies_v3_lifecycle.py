@@ -218,7 +218,12 @@ def install(
         old = (
             ownership.require_same_family(root, hash_tree)
             if native_protocol
-            in (protocols.WORKSPACE_V4_PATH, protocols.WORKSPACE_V5_LOCATION)
+            in (
+                protocols.WORKSPACE_V4_PATH,
+                protocols.WORKSPACE_V5_LOCATION,
+                protocols.WORKSPACE_V7_PINS3,
+                protocols.WORKSPACE_V7_PINS2,
+            )
             else ownership.existing(root, hash_tree)
         )
         original = ownership.native_state(root) if old is None else old["originalState"]
@@ -296,7 +301,12 @@ def uninstall(
         old = (
             ownership.require_same_family(root, hash_tree)
             if native_protocol
-            in (protocols.WORKSPACE_V4_PATH, protocols.WORKSPACE_V5_LOCATION)
+            in (
+                protocols.WORKSPACE_V4_PATH,
+                protocols.WORKSPACE_V5_LOCATION,
+                protocols.WORKSPACE_V7_PINS3,
+                protocols.WORKSPACE_V7_PINS2,
+            )
             else ownership.existing(root, hash_tree)
         )
         if old is None:

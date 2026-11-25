@@ -1,0 +1,30 @@
+{
+  "scope": "Exact originalSDK224 bytes joined independently reviewed225; no SDK response rewriting. Portable locks in tests are generated model inputs; physical validation remains separate.",
+  "proofSHA256": "f3ed644b3519bfb0d83364be0580ff897071c98e852212a0b1d6757ff8c91ecc",
+  "files": {
+    "59-tag/Package.swift": "9b4d03623dc0c10d3b7ab1e7f025b2024e55ab4caf14e61c13a5027de08435c9",
+    "59-tag/workspace-state.json": "0f2bf8876aaaf717440176e99ce33abaab53ad13bd05a5356d233644f0312398",
+    "59-tag/Package.resolved": "0cba4b1101d1d050139c43e2b1fbf362d78b94c9e25a747907e638d00eca22a4",
+    "59-tag/owned-edited-state.json": "951b0dd86aae9ce55b2738b45cdf0179a2190d127ae1f2ba94d328f0c3c65f2f",
+    "59-branch/Package.swift": "09898b70ba2ef3ee6c6c4d16faad1601089349882acb7ea38677fcefd73e911c",
+    "59-branch/workspace-state.json": "d437f3189b16026c07c5e624e40b490d757fe3eccbf3df87ee6a5401c579021a",
+    "59-branch/Package.resolved": "340d611efcd0d5916c845700c5a4111ac363d125a14d3e41926a5d804f2d6fd5",
+    "59-branch/owned-edited-state.json": "d3411df341b9089ad93a81389b71458e65c70eeeba86d6a18322814bfd0421bf",
+    "59-revision/Package.swift": "53013160bde5b4c5338dc48d798c7861e17f6956572923bcf1065347b63186c2",
+    "59-revision/workspace-state.json": "1a35b9de55fb4a52fe8f5e5596c2365e4dc700c81154dde82b2d311b25e0ac8c",
+    "59-revision/Package.resolved": "0151a0ce6f6cf73eb14d062ee964f86c8b4c87cde7270c5848ccde9e89f2a35e",
+    "59-revision/owned-edited-state.json": "9a9eee3d08694a1abe687dceae44ac64231569294bbcb5436137410b944494d4",
+    "60-tag/Package.swift": "7ce3b786eea6830c6ae762f78ff2eb33ec1783b0d3aed5983f35f43a87627c93",
+    "60-tag/workspace-state.json": "0f2bf8876aaaf717440176e99ce33abaab53ad13bd05a5356d233644f0312398",
+    "60-tag/Package.resolved": "4247ae320f9efa90b50895075624d6c9093a154253b33c55714755d30d43ce1e",
+    "60-tag/owned-edited-state.json": "951b0dd86aae9ce55b2738b45cdf0179a2190d127ae1f2ba94d328f0c3c65f2f",
+    "60-branch/Package.swift": "1ea4cc387ff0827c7ca011a16b262916a17e325fff36da0b62f093083c5eb87a",
+    "60-branch/workspace-state.json": "d437f3189b16026c07c5e624e40b490d757fe3eccbf3df87ee6a5401c579021a",
+    "60-branch/Package.resolved": "cea961f4bf5d1b169f724dc1bbb77684fb15a354cfc67efc506c1a874bc6337f",
+    "60-branch/owned-edited-state.json": "d3411df341b9089ad93a81389b71458e65c70eeeba86d6a18322814bfd0421bf",
+    "60-revision/Package.swift": "e1f26d4f399f9dcb51e34128fd08515c55da754a05eb832424702701227f4826",
+    "60-revision/workspace-state.json": "1a35b9de55fb4a52fe8f5e5596c2365e4dc700c81154dde82b2d311b25e0ac8c",
+    "60-revision/Package.resolved": "19e5a06642f83210c1d582fa957213bc6441d65b2b1d6969cdf435a6eda12579",
+    "60-revision/owned-edited-state.json": "9a9eee3d08694a1abe687dceae44ac64231569294bbcb5436137410b944494d4"
+  }
+}

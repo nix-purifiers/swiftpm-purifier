@@ -1,0 +1,365 @@
+{
+  "scope": "Actual205 physical input contents; deterministic archive preserves files, executable bits and empty directories. No Git or SDK invocation. Runtime NAR reconstruction still unverified.",
+  "archiveSHA256": "50b40db5b40e12348327368e82c922dd3be9a01d819789abfda535acfbbac10e",
+  "bytes": 22717,
+  "inputs": {
+    "alpha": {
+      "storeRoot": "/nix/store/krp7vr3lh5yv37z0s2lk8nmwjqf3ksis-purifier-alpha-git-fixture",
+      "narHash": "sha256-HldBR3cqy5qFCgQUS9U8WvviWcFw6BXdw13QasiaqL4=",
+      "files": {
+        ".": {
+          "kind": "directory"
+        },
+        "alpha.git": {
+          "kind": "directory"
+        },
+        "alpha.git/HEAD": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "f6f2b945f6c411b02ba3da9c7ace88dcf71b6af65ba2e0d89aa82900042b5a10"
+        },
+        "alpha.git/config": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "dd548269913b6adbdfa7049170ea86850050cb762ea3b9c510a0b2986d2113e3"
+        },
+        "alpha.git/description": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "85ab6c163d43a17ea9cf7788308bca1466f1b0a8d1cc92e26e9bf63da4062aee"
+        },
+        "alpha.git/hooks": {
+          "kind": "directory"
+        },
+        "alpha.git/hooks/applypatch-msg.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "4bc2f4ad555d131293dd7788aa8c4beeae10e8983071d394631e22290bed7d9c"
+        },
+        "alpha.git/hooks/commit-msg.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "3172395a0a7cbea5916cb88cf5d02772a4f9b60a675949c9cfb85d134774908c"
+        },
+        "alpha.git/hooks/fsmonitor-watchman.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "d0d11e4fe620202e3068234a525e5d976ad3c1f8a221f13125150b9c0af5c3a0"
+        },
+        "alpha.git/hooks/post-update.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "2d8b0c176dbf04b497878493720d080a1be36fd366b0781d3f522e3d14940a48"
+        },
+        "alpha.git/hooks/pre-applypatch.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "1b1b7a377aba128fed8764812139c764c8a55cae930ffe5e8662183714315260"
+        },
+        "alpha.git/hooks/pre-commit.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "7808605584b3244e0a8eef254323476c1668557a50c33aad16c51add98ed8612"
+        },
+        "alpha.git/hooks/pre-merge-commit.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "3c0a0addcc06d5d5577f79781337432e6140d10f9623ee52b1243541902add02"
+        },
+        "alpha.git/hooks/pre-push.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "3d0b7f282f8d04c5a005669221de207cd87bd03dabb08abd476b5406c2d6e068"
+        },
+        "alpha.git/hooks/pre-rebase.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "a6c90f5f263627950ae7528ffeb6954d01e14ee3aea54e11d5f7384c24338760"
+        },
+        "alpha.git/hooks/pre-receive.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "73242d72659facacf81a34e9c0eb38d858de6fcfe35fdff98d37b8e8fe58ef30"
+        },
+        "alpha.git/hooks/prepare-commit-msg.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "fcdc1fbcf0144422127894356eb19abe765bc2c738d0d4f268f05cc5f01e4204"
+        },
+        "alpha.git/hooks/push-to-checkout.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "32b894a665bcbcc07578e320f4be5d9df13509faba400c4eaa698615507d6d6b"
+        },
+        "alpha.git/hooks/sendemail-validate.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "7a768767e63d99399950fafa5e1786c64af32885de229d8771e2ef57b44e07cf"
+        },
+        "alpha.git/hooks/update.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "bad6dd1a084d2fb0d5119d2736043eed0106d75aaa69609603b0eae46a028d3b"
+        },
+        "alpha.git/info": {
+          "kind": "directory"
+        },
+        "alpha.git/info/exclude": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "6671fe83b7a07c8932ee89164d1f2793b2318058eb8b98dc5c06ee0a5a3b0ec1"
+        },
+        "alpha.git/objects": {
+          "kind": "directory"
+        },
+        "alpha.git/objects/1d": {
+          "kind": "directory"
+        },
+        "alpha.git/objects/1d/2280fa20b39c364eef99754a431162ffd46678": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "c5cd3fb40c88421ac7b93d9f98efd0b82ee5cc675637d37f6e577cee1739ff3c"
+        },
+        "alpha.git/objects/6d": {
+          "kind": "directory"
+        },
+        "alpha.git/objects/6d/fb4a7fdbd761e179d886f1d67f23ab89d64dad": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "421990f07ca0bef09d2bd91c7f38227c6adc6b3a61730850b9f59d87f4ee1402"
+        },
+        "alpha.git/objects/90": {
+          "kind": "directory"
+        },
+        "alpha.git/objects/90/8b88560b2cedbcaa30a26e28145cb4ce78f2a1": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "e581041696aba52e4379636f34d8342db9d1955d7518af02bd93d97a8168493e"
+        },
+        "alpha.git/objects/93": {
+          "kind": "directory"
+        },
+        "alpha.git/objects/93/7651c2e5b1863492f803f0c3cfc6846769bdeb": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "ef5d2388bdb5207fabb5ed784917dedc158a581577f0a2eaf15b8eb9d6754733"
+        },
+        "alpha.git/objects/aa": {
+          "kind": "directory"
+        },
+        "alpha.git/objects/aa/df45843576862022b3ff39b169237e542c22aa": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "39589bcd74760bc9214a9a064b47e42c6f3ede417253a40787fa9487c6ecc2df"
+        },
+        "alpha.git/objects/ed": {
+          "kind": "directory"
+        },
+        "alpha.git/objects/ed/dda3fcc1a7a0cdc2ef5e9959c44f096cd10997": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "f13d79b67bbd3936c3a10abb767fe4a3ad79193db19d00d9cdb62d9b4c2f4701"
+        },
+        "alpha.git/objects/info": {
+          "kind": "directory"
+        },
+        "alpha.git/objects/pack": {
+          "kind": "directory"
+        },
+        "alpha.git/packed-refs": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "17f0e9c7378fcbea91a824d079ae6d397955b106431215bcfbbe20642a61e043"
+        },
+        "alpha.git/refs": {
+          "kind": "directory"
+        },
+        "alpha.git/refs/heads": {
+          "kind": "directory"
+        },
+        "alpha.git/refs/tags": {
+          "kind": "directory"
+        }
+      }
+    },
+    "beta": {
+      "storeRoot": "/nix/store/8rf90rkvqmj48s1290w5m54hv0bp6nai-purifier-beta-git-fixture",
+      "narHash": "sha256-rjISdpUjdGmUSfjreLZeUfXNfO6us24D6ZSKLwOfEI0=",
+      "files": {
+        ".": {
+          "kind": "directory"
+        },
+        "beta.git": {
+          "kind": "directory"
+        },
+        "beta.git/HEAD": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "f6f2b945f6c411b02ba3da9c7ace88dcf71b6af65ba2e0d89aa82900042b5a10"
+        },
+        "beta.git/config": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "dd548269913b6adbdfa7049170ea86850050cb762ea3b9c510a0b2986d2113e3"
+        },
+        "beta.git/description": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "85ab6c163d43a17ea9cf7788308bca1466f1b0a8d1cc92e26e9bf63da4062aee"
+        },
+        "beta.git/hooks": {
+          "kind": "directory"
+        },
+        "beta.git/hooks/applypatch-msg.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "4bc2f4ad555d131293dd7788aa8c4beeae10e8983071d394631e22290bed7d9c"
+        },
+        "beta.git/hooks/commit-msg.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "3172395a0a7cbea5916cb88cf5d02772a4f9b60a675949c9cfb85d134774908c"
+        },
+        "beta.git/hooks/fsmonitor-watchman.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "d0d11e4fe620202e3068234a525e5d976ad3c1f8a221f13125150b9c0af5c3a0"
+        },
+        "beta.git/hooks/post-update.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "2d8b0c176dbf04b497878493720d080a1be36fd366b0781d3f522e3d14940a48"
+        },
+        "beta.git/hooks/pre-applypatch.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "1b1b7a377aba128fed8764812139c764c8a55cae930ffe5e8662183714315260"
+        },
+        "beta.git/hooks/pre-commit.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "7808605584b3244e0a8eef254323476c1668557a50c33aad16c51add98ed8612"
+        },
+        "beta.git/hooks/pre-merge-commit.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "3c0a0addcc06d5d5577f79781337432e6140d10f9623ee52b1243541902add02"
+        },
+        "beta.git/hooks/pre-push.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "3d0b7f282f8d04c5a005669221de207cd87bd03dabb08abd476b5406c2d6e068"
+        },
+        "beta.git/hooks/pre-rebase.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "a6c90f5f263627950ae7528ffeb6954d01e14ee3aea54e11d5f7384c24338760"
+        },
+        "beta.git/hooks/pre-receive.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "73242d72659facacf81a34e9c0eb38d858de6fcfe35fdff98d37b8e8fe58ef30"
+        },
+        "beta.git/hooks/prepare-commit-msg.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "fcdc1fbcf0144422127894356eb19abe765bc2c738d0d4f268f05cc5f01e4204"
+        },
+        "beta.git/hooks/push-to-checkout.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "32b894a665bcbcc07578e320f4be5d9df13509faba400c4eaa698615507d6d6b"
+        },
+        "beta.git/hooks/sendemail-validate.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "7a768767e63d99399950fafa5e1786c64af32885de229d8771e2ef57b44e07cf"
+        },
+        "beta.git/hooks/update.sample": {
+          "kind": "regular",
+          "executable": true,
+          "sha256": "bad6dd1a084d2fb0d5119d2736043eed0106d75aaa69609603b0eae46a028d3b"
+        },
+        "beta.git/info": {
+          "kind": "directory"
+        },
+        "beta.git/info/exclude": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "6671fe83b7a07c8932ee89164d1f2793b2318058eb8b98dc5c06ee0a5a3b0ec1"
+        },
+        "beta.git/objects": {
+          "kind": "directory"
+        },
+        "beta.git/objects/22": {
+          "kind": "directory"
+        },
+        "beta.git/objects/22/2760879d4ac6614518c05b74ab6f830e3c55fc": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "59693bae7c58fa84a08d2ce2cc1b577e7b1be95d5b20268c7d71ea7d92567c98"
+        },
+        "beta.git/objects/77": {
+          "kind": "directory"
+        },
+        "beta.git/objects/77/d406683c894aebe9f34a1e1dfd93936b54c353": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "d2985e73d687b763d8823dc63212d7324afa09565dad1ab88f903b40b7903ee1"
+        },
+        "beta.git/objects/83": {
+          "kind": "directory"
+        },
+        "beta.git/objects/83/0897ef66978320ff2eb3c8c8307541ac13684c": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "a918d763461bfd851ac62c80e9d0e10e28e6f0c1cd1b5b1834fe1130bacfc947"
+        },
+        "beta.git/objects/b0": {
+          "kind": "directory"
+        },
+        "beta.git/objects/b0/d8616a5cdfdac1a294b6dedc479167090e7e15": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "16d3b54bad802ac1359fd81199ecfc682bb23bc6af6b18ef9fb011886a0c49f5"
+        },
+        "beta.git/objects/f3": {
+          "kind": "directory"
+        },
+        "beta.git/objects/f3/ebe3c19d7daa59e1c2c5391f4e32ef6b224e20": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "412dd69cf242d150441135a5630321b0f3b7e50c43dc93264022bc8d92b40f48"
+        },
+        "beta.git/objects/f5": {
+          "kind": "directory"
+        },
+        "beta.git/objects/f5/e9048aacfce2c52cb009fae01a324b7ef41961": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "48d2e4f9fc2b63cc116674920da2b4868e670598c977d6c7f956f2d4ebf843a2"
+        },
+        "beta.git/objects/info": {
+          "kind": "directory"
+        },
+        "beta.git/objects/pack": {
+          "kind": "directory"
+        },
+        "beta.git/packed-refs": {
+          "kind": "regular",
+          "executable": false,
+          "sha256": "6912be898be3f7bcb209becaff7e1295c45bb5b9f16bd675f649b96f6b37d0ff"
+        },
+        "beta.git/refs": {
+          "kind": "directory"
+        },
+        "beta.git/refs/heads": {
+          "kind": "directory"
+        },
+        "beta.git/refs/tags": {
+          "kind": "directory"
+        }
+      }
+    }
+  }
+}

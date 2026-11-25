@@ -1,0 +1,47 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "alpha",
+          "kind" : "remoteSourceControl",
+          "location" : "http://127.0.0.1:43467/alpha.git",
+          "name" : "Alpha"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "640382ca577049fb8016657fd7f80f19ecf92537",
+            "version" : "1.0.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "alpha"
+      },
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "beta",
+          "kind" : "remoteSourceControl",
+          "location" : "http://127.0.0.1:43467/beta.git",
+          "name" : "Beta"
+        },
+        "state" : {
+          "checkoutState" : {
+            "revision" : "9867cc489e1d91d7bde07fa5aadedefeea61cace",
+            "version" : "1.0.0"
+          },
+          "name" : "sourceControlCheckout"
+        },
+        "subpath" : "beta"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}
