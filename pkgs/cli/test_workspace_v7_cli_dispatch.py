@@ -181,6 +181,52 @@ class CLIObservation(unittest.TestCase):
                 with self.assertRaises(LegacyPathReached):
                     cli.relock(self.root)
 
+    def registry_fixture(self, pins):
+        fixture = FIXTURE / ("workspace7-registry-pins" + str(pins))
+        (self.root / "Package.swift").write_bytes(
+            (fixture / "Package.swift").read_bytes()
+        )
+        (self.root / ".build").mkdir(exist_ok=True)
+        (self.root / ".build/workspace-state.json").write_bytes(
+            (fixture / "workspace-state.json").read_bytes()
+        )
+        (self.root / "Package.resolved").write_bytes(
+            (fixture / "Package.resolved").read_bytes()
+        )
+
+    def test_registry_existing12_and13_still_force_their_profile(self):
+        for version, pins in [(12, 3), (13, 2)]:
+            self.registry_fixture(pins)
+            (self.root / "swiftpm-purifier.lock.json").write_text(
+                json.dumps({"version": version})
+            )
+            with (
+                mock.patch.object(cli, "sdk_mode", return_value=False),
+                mock.patch.object(cli, "recover_dependencies_v1"),
+                mock.patch.object(
+                    cli, "relock_dependencies_v3", return_value="typed"
+                ) as capture,
+            ):
+                self.assertEqual(cli.relock(self.root), "typed")
+                capture.assert_called_once_with(self.root, None, version)
+
+    def test_malformed_registry_never_reaches_legacy_runtime(self):
+        self.registry_fixture(3)
+        path = self.root / "Package.resolved"
+        pins = json.loads(path.read_text())
+        pins["pins"][0]["location"] = "nix.greeter"
+        path.write_text(json.dumps(pins))
+        with (
+            mock.patch.object(cli, "sdk_mode", return_value=False),
+            mock.patch.object(cli, "recover_dependencies_v1"),
+            mock.patch.object(cli, "observe_host_runtime") as legacy,
+            mock.patch.object(cli, "relock_dependencies_v3") as capture,
+        ):
+            with self.assertRaises(cli.PurifierError):
+                cli.relock(self.root)
+            legacy.assert_not_called()
+            capture.assert_not_called()
+
     def test_existing_formats4_and5_are_not_fresh_adoption_authority(self):
         self.fixture(2)
         for version in [4, 5]:

@@ -1,0 +1,27 @@
+{
+  "object" : {
+    "artifacts" : [
+
+    ],
+    "dependencies" : [
+      {
+        "basedOn" : null,
+        "packageRef" : {
+          "identity" : "nix.greeter",
+          "kind" : "registry",
+          "location" : "nix.greeter",
+          "name" : "nix.greeter"
+        },
+        "state" : {
+          "name" : "registryDownload",
+          "version" : "1.0.0"
+        },
+        "subpath" : "nix/greeter/1.0.0"
+      }
+    ],
+    "prebuilts" : [
+
+    ]
+  },
+  "version" : 7
+}

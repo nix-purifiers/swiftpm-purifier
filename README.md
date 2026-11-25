@@ -394,6 +394,10 @@ The unreleased format-12 and format-13 implementations cover the separately
 observed workspace-state version-7 `kind`/`location` envelope. Both require
 empty artifact and prebuilt arrays; neither changes older formats or selects
 a protocol from the compiler's release number.
+Fresh native registry graphs with empty artifact/prebuilt inventories are
+strictly classified and remain with the existing registry-capable profile; registry records are not admitted into
+formats 12/13. That retained profile preserves native origin fields under
+its existing semantics, separate from format-12 manifest attestation.
 Dependency source inventories currently reject symlinks and special files,
 including internal source symlinks used by some package plugins.
 

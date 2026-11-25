@@ -8,9 +8,14 @@ never chooses by compiler version and does not convert old portable formats.
 import dependencies_v1_cache as cache
 import native_path_family as family
 import native_protocols as protocols
+import workspace_v7_legacy_registry as legacy_registry
 
 
 def candidate(value, selected_pins, *, root):
+    # Preserve the existing registry-capable profile only after an explicit
+    # complete classification. Parser failures never become fallback.
+    if legacy_registry.candidate(value, selected_pins, root=root):
+        return None
     if (
         not isinstance(value, dict)
         or type(value.get("version")) is not int

@@ -86,6 +86,7 @@ stdenvNoCC.mkDerivation {
       ./native_path_family.py
       ./native_protocols.py
       ./workspace_v7_dispatch.py
+      ./workspace_v7_legacy_registry.py
       ./workspace_v7_pins3.py
       ./workspace_v7_pins3_capture.py
       ./workspace_v7_pins3_ownership.py
@@ -106,6 +107,8 @@ stdenvNoCC.mkDerivation {
       ./test_workspace_v7_pins2_transactions.py
       ../../tests/fixtures/workspace7-store-git
       ../../tests/fixtures/workspace7-pins3
+      ../../tests/fixtures/workspace7-registry-pins3
+      ../../tests/fixtures/workspace7-registry-pins2
       ../../tests/fixtures/workspace7-pins2
       ../../tests/fixtures/workspace7-pins2-owned
       ../../tests/fixtures/workspace7-pins2-contexts
@@ -216,7 +219,7 @@ stdenvNoCC.mkDerivation {
     cp pkgs/cli/workspace_v4_path.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/native_path_family.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/native_protocols.py $out/libexec/swiftpm-purifier/
-    cp pkgs/cli/workspace_v7_dispatch.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_dispatch.py pkgs/cli/workspace_v7_legacy_registry.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v7_pins3.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v7_pins3_capture.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v7_pins3_ownership.py $out/libexec/swiftpm-purifier/
