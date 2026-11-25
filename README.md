@@ -394,6 +394,8 @@ The unreleased format-12 and format-13 implementations cover the separately
 observed workspace-state version-7 `kind`/`location` envelope. Both require
 empty artifact and prebuilt arrays; neither changes older formats or selects
 a protocol from the compiler's release number.
+Dependency source inventories currently reject symlinks and special files,
+including internal source symlinks used by some package plugins.
 
 Format 12 pairs this state with native version-3 resolved pins. It admits
 remote Git tags, branches and revisions, plus confined in-tree local packages.

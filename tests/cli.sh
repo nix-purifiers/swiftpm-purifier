@@ -103,6 +103,8 @@ relock() {
   echo "== relocking vapor/toolbox against its lockfile kept outside it"
   git clone --quiet https://github.com/vapor/toolbox.git "$work/relock/toolbox"
   git -C "$work/relock/toolbox" checkout --quiet 9046ddadc17ac8400e1923a2db3bdca054172874
+  # Relock the authentic existing legacy profile, as the other fixtures do.
+  cp "$tests/projects/toolbox/swiftpm-purifier.lock.json" "$work/relock/toolbox.lock.json"
   (cd "$work/relock/toolbox" && "$purifier" --lockfile "$work/relock/toolbox.lock.json" relock)
   diff -u "$tests/projects/toolbox/swiftpm-purifier.lock.json" "$work/relock/toolbox.lock.json" \
     || fail "relocking vapor/toolbox changed its lockfile"
@@ -144,7 +146,8 @@ interactive() {
   echo "== a lockfile kept outside the package"
   mkdir -p "$work/external"
   fixture hello external/hello
-  rm "$work/external/hello/swiftpm-purifier.lock.json"
+  # Move the existing fixture profile; fresh capture may select a newer one.
+  mv "$work/external/hello/swiftpm-purifier.lock.json" "$work/external/hello.lock.json"
   cd "$work/external/hello"
   "$purifier" --lockfile "$work/external/hello.lock.json" lock
   [ ! -e swiftpm-purifier.lock.json ] || fail "lock --lockfile wrote the lockfile into the package"
@@ -192,6 +195,9 @@ offline() {
   echo "== after prefetch, the everyday loop works with no network"
   local -a without_network
   read -r -a without_network <<< "${SWIFTPM_PURIFIER_TEST_OFFLINE:-unshare -rn}"
+  # sudo may change HOME before setpriv restores the caller's UID. Restore
+  # that same caller value inside the namespace, after the privilege prefix.
+  without_network+=(env "HOME=$HOME")
   fixture hello offline
   cd "$work/offline"
   "$purifier" prefetch
