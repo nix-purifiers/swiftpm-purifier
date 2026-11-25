@@ -30,12 +30,33 @@ WORKSPACE_V5_LOCATION = NativeLocationProtocol(
     ".swiftpm-purifier-workspace-v5-location-owned.json",
 )
 
+WORKSPACE_V7_PINS3 = NativeLocationProtocol(
+    12,
+    7,
+    "workspace-state.json",
+    frozenset({"dependencies", "artifacts", "prebuilts"}),
+    "workspace-state-v7-location-pins3",
+    ".swiftpm-purifier-workspace-v7-pins3-owned.json",
+)
+
+
+WORKSPACE_V7_PINS2 = NativeLocationProtocol(
+    13,
+    7,
+    "workspace-state.json",
+    frozenset({"dependencies", "artifacts", "prebuilts"}),
+    "workspace-state-v7-location-pins2",
+    ".swiftpm-purifier-workspace-v7-pins2-owned.json",
+)
+
 
 def checked(protocol):
     if (
         protocol is DEPENDENCIES_V3
         or protocol is WORKSPACE_V4_PATH
         or protocol is WORKSPACE_V5_LOCATION
+        or protocol is WORKSPACE_V7_PINS3
+        or protocol is WORKSPACE_V7_PINS2
     ):
         return protocol
     raise Reject("unknown native transaction protocol descriptor")
@@ -43,4 +64,9 @@ def checked(protocol):
 
 def installation_name(protocol, identity, pin):
     protocol = checked(protocol)
-    return identity if protocol is WORKSPACE_V5_LOCATION else pin["name"]
+    return identity if is_location(protocol) else pin["name"]
+
+
+def is_location(protocol):
+    protocol = checked(protocol)
+    return protocol in (WORKSPACE_V5_LOCATION, WORKSPACE_V7_PINS3, WORKSPACE_V7_PINS2)

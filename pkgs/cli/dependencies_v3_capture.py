@@ -10,6 +10,16 @@ import native_protocols as protocols
 from native_path_family import codec
 import dependencies_v3_observation as observation
 import dependencies_v1_selectors as selectors
+import store_git_sources as store_git
+
+
+def checkout_kind(native_protocol, kind):
+    """The new kind is scoped to the two observed LOCATION/pins families."""
+    if native_protocol in (protocols.WORKSPACE_V7_PINS3, protocols.WORKSPACE_V7_PINS2):
+        return kind in ("remoteSourceControl", store_git.KIND)
+    return kind == (
+        "remoteSourceControl" if protocols.is_location(native_protocol) else "remote"
+    )
 
 
 def native_graph(root, environment=None, *, native_protocol=protocols.DEPENDENCIES_V3):
@@ -39,32 +49,42 @@ def native_graph(root, environment=None, *, native_protocol=protocols.DEPENDENCI
     state_raw = cache.regular_bytes(root, ".build/" + native_protocol.state_basename)
     pin_raw = cache.regular_bytes(root, "Package.resolved")
     records = protocol.native_index(cache.decode(state_raw), root)
-    pins = protocol.pins_index(cache.decode(pin_raw))
+    pin_value = cache.decode(pin_raw)
+    pins = protocol.pins_index(pin_value)
+    if native_protocol is protocols.WORKSPACE_V7_PINS3:
+        protocol.attest_pins(pin_value, root)
     remote = {
         record["packageRef"][
-            "location" if native_protocol is protocols.WORKSPACE_V5_LOCATION else "path"
+            "location" if protocols.is_location(native_protocol) else "path"
         ]: record
         for record in records.values()
-        if record["packageRef"]["kind"]
-        == (
-            "remoteSourceControl"
-            if native_protocol is protocols.WORKSPACE_V5_LOCATION
-            else "remote"
-        )
+        if checkout_kind(native_protocol, record["packageRef"]["kind"])
     }
     cache.require(set(remote) == set(pins), "native-v3 complete pin/source join")
     paths = set()
     for location, record in remote.items():
         pin = pins[location]
-        cache.require(
-            pin["package"] == record["packageRef"]["name"]
-            and (
-                protocol.checkout_state(pin["state"], selected=True)
-                if native_protocol is protocols.WORKSPACE_V5_LOCATION
-                else pin["state"]
+        if native_protocol in (
+            protocols.WORKSPACE_V7_PINS3,
+            protocols.WORKSPACE_V7_PINS2,
+        ):
+            joined = protocol.selected_pin_matches(pin, record)
+        else:
+            joined = (
+                pin["package"] == record["packageRef"]["name"]
+                and (
+                    protocol.checkout_state(pin["state"], selected=True)
+                    if protocols.is_location(native_protocol)
+                    else pin["state"]
+                )
+                == record["state"]["checkoutState"]
             )
-            == record["state"]["checkoutState"],
-            "native-v3 pin/name/revision/version join",
+        cache.require(
+            joined,
+            "workspace7 native identity/source/state join"
+            if native_protocol
+            in (protocols.WORKSPACE_V7_PINS3, protocols.WORKSPACE_V7_PINS2)
+            else "native-v3 pin/name/revision/version join",
         )
         subpath = record["subpath"]
         cache.require(subpath not in paths, "native-v3 checkout path alias")
@@ -84,11 +104,7 @@ def checkout_heads(
     cache.validate_environment(session.env)
     result = {}
     for index, (identity, record) in enumerate(sorted(records.items())):
-        if record["packageRef"]["kind"] != (
-            "remoteSourceControl"
-            if native_protocol is protocols.WORKSPACE_V5_LOCATION
-            else "remote"
-        ):
+        if not checkout_kind(native_protocol, record["packageRef"]["kind"]):
             continue
         checkout = root / ".build/checkouts" / record["subpath"]
         cache.require(checkout == checkout.resolve(), "native-v3 checkout link")
@@ -167,18 +183,33 @@ def immutable_sources(
     heads = checkout_heads(root, records, session, api, native_protocol=native_protocol)
     pins, sources = {}, {}
     for index, (identity, record) in enumerate(sorted(records.items())):
-        if record["packageRef"]["kind"] != (
-            "remoteSourceControl"
-            if native_protocol is protocols.WORKSPACE_V5_LOCATION
-            else "remote"
-        ):
+        if not checkout_kind(native_protocol, record["packageRef"]["kind"]):
             continue
         location = record["packageRef"][
-            "location" if native_protocol is protocols.WORKSPACE_V5_LOCATION else "path"
+            "location" if protocols.is_location(native_protocol) else "path"
         ]
-        url = mirrors.get(location, location)
-        protocol.checkout_subpath(url)
         label = "native-v3-source-" + str(index)
+        store_source = None
+        if record["packageRef"]["kind"] == store_git.KIND:
+            checkout_state = record["state"]["checkoutState"]
+            store_source = store_git.capture(
+                location,
+                heads[identity],
+                checkout_state.get("branch"),
+                checkout_state.get("version"),
+                session,
+                api,
+                label=label + "-store",
+            )
+            cache.require(
+                mirrors.get(location, store_source.uri) in (location, store_source.uri),
+                "store Git mirror is outside this source model",
+            )
+            url, source_location = store_source.uri, store_source.uri
+        else:
+            url, source_location = mirrors.get(location, location), location
+            # Preserve existing remote-family transport admission exactly.
+            protocol.checkout_subpath(url)
         fetched = legacy_manifest.json_value(
             session.run(
                 label + "-fetch",
@@ -235,14 +266,17 @@ def immutable_sources(
         )
         pin = {
             "name": record["packageRef"]["name"],
-            "sourceLocation": location,
+            "sourceLocation": source_location,
             "revision": heads[identity],
             "version": record["state"]["checkoutState"].get("version"),
             "hash": fetched["hash"],
         }
-        if native_protocol is protocols.WORKSPACE_V5_LOCATION:
+        if protocols.is_location(native_protocol):
             pin["branch"] = record["state"]["checkoutState"].get("branch")
-        if url != location:
+        if store_source is not None:
+            pin["sourceKind"] = store_git.KIND
+            pin["storeSource"] = store_source.encode()
+        elif url != location:
             pin["url"] = url
         pins[identity], sources[identity] = pin, source
     return pins, sources
@@ -279,6 +313,8 @@ def prepare(
     if native_protocol in (
         protocols.WORKSPACE_V4_PATH,
         protocols.WORKSPACE_V5_LOCATION,
+        protocols.WORKSPACE_V7_PINS3,
+        protocols.WORKSPACE_V7_PINS2,
     ):
         from native_path_family import ownership
 
@@ -305,7 +341,13 @@ def prepare(
     )
     session = NativeSession(package, environment, temporary.parent)
     command = api.native_command("swift-package")
-    isolation = api.swiftpm_isolation(temporary)
+    if (
+        native_protocol is protocols.WORKSPACE_V7_PINS3
+        or native_protocol is protocols.WORKSPACE_V7_PINS2
+    ):
+        isolation = api.swiftpm_isolation(temporary, disable_prebuilts=False)
+    else:
+        isolation = api.swiftpm_isolation(temporary)
     session.receipt.update(
         sourceBefore=source_before["fingerprint"],
         sourceAfter=None,
@@ -340,6 +382,32 @@ def prepare(
     description = legacy_manifest.json_value(
         session.run("root-description", [*command, "dump-package"]).stdout
     )
+    for index, pin_value in enumerate(pins.values()):
+        store_source = store_git.pin_source(pin_value)
+        if store_source is not None:
+            with store_git.metadata_environment(session, Path(store_source.location)):
+                actual_nar = (
+                    session.run(
+                        "store-source-final-" + str(index),
+                        [
+                            api.tool("nix"),
+                            "--offline",
+                            "--store",
+                            "dummy://",
+                            "hash",
+                            "path",
+                            "--type",
+                            "sha256",
+                            store_source.path,
+                        ],
+                    )
+                    .stdout.decode()
+                    .strip()
+                )
+            cache.require(
+                actual_nar == store_source.nar_hash,
+                "store Git input changed during native capture",
+            )
     source_after = observation.capture_source(package, source_before)
     observation.verify(root, initial)
     session.receipt.update(
@@ -350,25 +418,19 @@ def prepare(
     locals_ = []
     for identity, record in sorted(records.items()):
         if record["packageRef"]["kind"] == (
-            "fileSystem"
-            if native_protocol is protocols.WORKSPACE_V5_LOCATION
-            else "local"
+            "fileSystem" if protocols.is_location(native_protocol) else "local"
         ):
             relative, _ = protocol.local_directory(
                 package,
                 record["packageRef"][
-                    "location"
-                    if native_protocol is protocols.WORKSPACE_V5_LOCATION
-                    else "path"
+                    "location" if protocols.is_location(native_protocol) else "path"
                 ],
             )
             row = copy.deepcopy(record)
             row["packageRef"][
-                "location"
-                if native_protocol is protocols.WORKSPACE_V5_LOCATION
-                else "path"
+                "location" if protocols.is_location(native_protocol) else "path"
             ] = "@root@/" + relative
-            if native_protocol is protocols.WORKSPACE_V5_LOCATION:
+            if protocols.is_location(native_protocol):
                 row["state"]["path"] = "@root@/" + relative
             locals_.append(row)
     lock = {
@@ -381,11 +443,7 @@ def prepare(
                 row
                 for row in records.values()
                 if row["packageRef"]["kind"]
-                == (
-                    "fileSystem"
-                    if native_protocol is protocols.WORKSPACE_V5_LOCATION
-                    else "local"
-                )
+                == ("fileSystem" if protocols.is_location(native_protocol) else "local")
             ],
         ),
         "products": products,
@@ -394,6 +452,8 @@ def prepare(
         "binaryTargets": [],
         "localDependencies": locals_,
     }
+    if native_protocol is protocols.WORKSPACE_V7_PINS3:
+        lock["originHash"] = cache.decode(new_native)["originHash"]
     lock["contentHash"] = protocol.content_hash(lock)
     protocol.validate_lock(lock, cache.decode(new_native), root)
     final_records, final_native = native_graph(
@@ -410,6 +470,8 @@ def prepare(
     if native_protocol in (
         protocols.WORKSPACE_V4_PATH,
         protocols.WORKSPACE_V5_LOCATION,
+        protocols.WORKSPACE_V7_PINS3,
+        protocols.WORKSPACE_V7_PINS2,
     ):
         ownership(native_protocol).require_same_family(
             root, getattr(api, "dependencies_v1_hash", None)

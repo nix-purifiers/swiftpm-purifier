@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "beta",
+      "kind" : "remoteSourceControl",
+      "location" : "https://compat.invalid/beta.git",
+      "state" : {
+        "revision" : "77202c76dc16237f8bdee6c03b44f57a60d755f1",
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 2
+}

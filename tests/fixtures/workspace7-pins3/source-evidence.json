@@ -1,0 +1,24 @@
+{
+  "scope": "Authentic native output fixture, not purifier/FOD compatibility proof. Unit portable FOD digests are explicitly synthetic and do not establish source provenance.",
+  "compilerVersion": "6.4.2",
+  "SwiftPMVersion": "6.4.2",
+  "toolsVersion": "6.0",
+  "platform": "x86_64-linux",
+  "SDKArchiveURL": "https://download.swift.org/swift-6.4.2-release/ubuntu2204/swift-6.4.2-RELEASE/swift-6.4.2-RELEASE-ubuntu22.04.tar.gz",
+  "SDKArchiveSHA256": "c3081b1817117c66e4764d2a148357d997200048922c778b0f08c795833ae06d",
+  "actualNativeProofSHA256": "39dc917f9f63afd82e82c06bf9a6fcf953aa2da5d0d5dae2e1b5ea15208fef0b",
+  "files": [
+    {
+      "name": "Package.swift",
+      "sha256": "395971efc06fa2c27140a3f4044190b5d274e3883627124e12a430488bfd7b91"
+    },
+    {
+      "name": "Package.resolved",
+      "sha256": "26b5bcd99bc2a5a08cb7eba0edad2611a6c2917f4119865e9463f590f51bd68d"
+    },
+    {
+      "name": "workspace-state.json",
+      "sha256": "31648ec389137698d0f27c94cbf0210c1fff59e6bc69d43d721d794762be1da5"
+    }
+  ]
+}

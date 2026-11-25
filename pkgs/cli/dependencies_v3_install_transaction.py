@@ -182,6 +182,8 @@ class Installation(BaseInstallation):
         if self.native_protocol in (
             protocols.WORKSPACE_V4_PATH,
             protocols.WORKSPACE_V5_LOCATION,
+            protocols.WORKSPACE_V7_PINS3,
+            protocols.WORKSPACE_V7_PINS2,
         ):
             try:
                 self.ownership.validate_native_layout(self.root)
@@ -195,6 +197,8 @@ class Installation(BaseInstallation):
                                 protocols.DEPENDENCIES_V3,
                                 protocols.WORKSPACE_V4_PATH,
                                 protocols.WORKSPACE_V5_LOCATION,
+                                protocols.WORKSPACE_V7_PINS3,
+                                protocols.WORKSPACE_V7_PINS2,
                             )
                             if descriptor is not self.native_protocol
                         ),
@@ -245,6 +249,8 @@ class Installation(BaseInstallation):
         if self.native_protocol in (
             protocols.WORKSPACE_V4_PATH,
             protocols.WORKSPACE_V5_LOCATION,
+            protocols.WORKSPACE_V7_PINS3,
+            protocols.WORKSPACE_V7_PINS2,
         ):
             from dependencies_v1_lifecycle import recover_locked
 
@@ -317,6 +323,8 @@ class Installation(BaseInstallation):
         if self.native_protocol in (
             protocols.WORKSPACE_V4_PATH,
             protocols.WORKSPACE_V5_LOCATION,
+            protocols.WORKSPACE_V7_PINS3,
+            protocols.WORKSPACE_V7_PINS2,
         ):
             self.ownership.validate_native_layout(self.root)
         record = super().validate(record)

@@ -1,0 +1,14 @@
+{
+  "originHash" : "5413dbbe227a117226c65771b58dfdafbf2d3423fa78b81e1be0062f569bb836",
+  "pins" : [
+    {
+      "identity" : "nix.greeter",
+      "kind" : "registry",
+      "location" : "",
+      "state" : {
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}

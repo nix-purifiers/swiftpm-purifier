@@ -1,0 +1,13 @@
+{
+  "scope": "ActualoriginalSwift6.3.3 registry resolve-only snapshot; legacyformat4 selectorpreservation, NOTnew12/13 registryadmission or downstreamCLI/build/consumer proof.",
+  "producerProofSHA256": "60a82c80845944af3b9723ebdd6e32ae7c9696d9858f0d59a93c8ba77432da91",
+  "tools": "5.9",
+  "stateVersion": 7,
+  "pinsVersion": 2,
+  "nativeFeatures": "Unmodified; no disable-experimental-prebuilts flag",
+  "payloads": {
+    "Package.swift": "3dfd9f273c9066418ed9e4b9b944438583918f6d3b7e2308d6780616cdd31026",
+    "Package.resolved": "63fde421255eae4c1bb0ef8a3a20eeb49885bb2ef8e558d67a3e83dd831d8a37",
+    "workspace-state.json": "0ce6dd27e464ab6c877d314a1618dd632d806b70d1ec362c9f0fee463c73e15a"
+  }
+}

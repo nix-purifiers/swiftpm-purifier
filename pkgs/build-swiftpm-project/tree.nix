@@ -16,6 +16,8 @@
   fetchEntry,
   runCommand,
   patchArtifact,
+  storeGitValidations ? [ ],
+  storeGitBindings ? [ ],
 }:
 let
   isBinaryTarget = artifact: builtins.match "\\.build/artifacts/.*" artifact.path != null;
@@ -35,12 +37,34 @@ let
   );
 in
 runCommand "swiftpm-purifier-tree"
-  {
-    workspaceState = builtins.toJSON read.workspaceState;
-    passAsFile = [ "workspaceState" ];
-  }
+  (
+    {
+      workspaceState = builtins.toJSON read.workspaceState;
+      passAsFile = [
+        "workspaceState"
+      ]
+      ++ (if storeGitBindings == [ ] then [ ] else [ "storeGitBindings" ]);
+    }
+    // (
+      if storeGitBindings == [ ] then
+        { }
+      else
+        {
+          inherit storeGitValidations;
+          storeGitBindings = builtins.toJSON storeGitBindings;
+        }
+    )
+  )
   ''
     mkdir -p $out
     ${links}
     cp "$workspaceStatePath" $out/workspace-state.json.in
+    ${
+      if storeGitBindings == [ ] then
+        ""
+      else
+        ''
+          cp "$storeGitBindingsPath" "$out/store-git-sources.json"
+        ''
+    }
   ''

@@ -1,0 +1,24 @@
+{
+  "originHash" : "395971efc06fa2c27140a3f4044190b5d274e3883627124e12a430488bfd7b91",
+  "pins" : [
+    {
+      "identity" : "alpha",
+      "kind" : "remoteSourceControl",
+      "location" : "http://127.0.0.1:43467/alpha.git",
+      "state" : {
+        "revision" : "640382ca577049fb8016657fd7f80f19ecf92537",
+        "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "beta",
+      "kind" : "remoteSourceControl",
+      "location" : "http://127.0.0.1:43467/beta.git",
+      "state" : {
+        "revision" : "9867cc489e1d91d7bde07fa5aadedefeea61cace",
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}

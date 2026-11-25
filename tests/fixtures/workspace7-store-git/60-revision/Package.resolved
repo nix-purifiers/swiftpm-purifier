@@ -1,0 +1,23 @@
+{
+  "originHash" : "e1f26d4f399f9dcb51e34128fd08515c55da754a05eb832424702701227f4826",
+  "pins" : [
+    {
+      "identity" : "alpha",
+      "kind" : "localSourceControl",
+      "location" : "/nix/store/krp7vr3lh5yv37z0s2lk8nmwjqf3ksis-purifier-alpha-git-fixture/alpha.git",
+      "state" : {
+        "revision" : "6dfb4a7fdbd761e179d886f1d67f23ab89d64dad"
+      }
+    },
+    {
+      "identity" : "beta",
+      "kind" : "localSourceControl",
+      "location" : "/nix/store/8rf90rkvqmj48s1290w5m54hv0bp6nai-purifier-beta-git-fixture/beta.git",
+      "state" : {
+        "revision" : "77d406683c894aebe9f34a1e1dfd93936b54c353",
+        "version" : "1.0.0"
+      }
+    }
+  ],
+  "version" : 3
+}

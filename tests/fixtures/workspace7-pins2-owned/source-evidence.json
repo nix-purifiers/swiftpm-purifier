@@ -1,0 +1,15 @@
+{
+  "scope": "Actual original6.4.2/tools5.9 tag native edit/build/unedit via owned Git file mirrors. Logical remote URLs, not HTTP transport. No purifier/FOD or mutable edited capture claim.",
+  "proofSHA256": "4b141bf5c52469c6ec47ba6404ef42f9d92b134bae441dfa68a47d259a2977c5",
+  "editedBuildPins": "Alpha omitted while edited, exactBeta retained; unedit restores original pins.",
+  "files": {
+    "initial.state.json": "b9ebbd86dbc962b707a9df87308ca48f2925b7c51dbb57e025e95018bec18c4e",
+    "initial.pins.json": "0dee868c1364dc2f9d675e0947397dd88cbe4c860a79418f4dcaad4a4ab3eea8",
+    "edited.state.json": "0e87822a19e4e345ee42f900dd2370b4a2216e87ae500a8722f729b8be814e5b",
+    "edited.pins.json": "0dee868c1364dc2f9d675e0947397dd88cbe4c860a79418f4dcaad4a4ab3eea8",
+    "edited-after-build.state.json": "0e87822a19e4e345ee42f900dd2370b4a2216e87ae500a8722f729b8be814e5b",
+    "edited-after-build.pins.json": "9ab86aff33e9d27de86310d1acddeda04cbad23307badc7ef6ab78f8e35436a1",
+    "unedited.state.json": "b9ebbd86dbc962b707a9df87308ca48f2925b7c51dbb57e025e95018bec18c4e",
+    "unedited.pins.json": "0dee868c1364dc2f9d675e0947397dd88cbe4c860a79418f4dcaad4a4ab3eea8"
+  }
+}

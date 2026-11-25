@@ -58,7 +58,11 @@ stdenvNoCC.mkDerivation {
     root = ../..;
     fileset = lib.fileset.unions [
       ./swiftpm_purifier.py
+      ./store_git_sources.py
+      ./store_git_validator.py
+      ./test_store_git_sources.py
       ./bounded_native.py
+      ./test_bounded_native.py
       ./legacy_manifest.py
       ./legacy_runtime.py
       ./legacy_pin_bridge.py
@@ -81,6 +85,33 @@ stdenvNoCC.mkDerivation {
       ./workspace_v4_path.py
       ./native_path_family.py
       ./native_protocols.py
+      ./workspace_v7_dispatch.py
+      ./workspace_v7_legacy_registry.py
+      ./workspace_v7_pins3.py
+      ./workspace_v7_pins3_capture.py
+      ./workspace_v7_pins3_ownership.py
+      ./workspace_v7_pins3_transaction.py
+      ./workspace_v7_pins3_install_transaction.py
+      ./workspace_v7_pins3_lifecycle.py
+      ./workspace_v7_pins2.py
+      ./workspace_v7_pins2_capture.py
+      ./workspace_v7_pins2_ownership.py
+      ./workspace_v7_pins2_transaction.py
+      ./workspace_v7_pins2_install_transaction.py
+      ./workspace_v7_pins2_lifecycle.py
+      ./test_workspace_v7_dispatch.py
+      ./test_workspace_v7_cli_dispatch.py
+      ./test_workspace_v7_pins3.py
+      ./test_workspace_v7_pins2.py
+      ./test_workspace_v7_pins3_transactions.py
+      ./test_workspace_v7_pins2_transactions.py
+      ../../tests/fixtures/workspace7-store-git
+      ../../tests/fixtures/workspace7-pins3
+      ../../tests/fixtures/workspace7-registry-pins3
+      ../../tests/fixtures/workspace7-registry-pins2
+      ../../tests/fixtures/workspace7-pins2
+      ../../tests/fixtures/workspace7-pins2-owned
+      ../../tests/fixtures/workspace7-pins2-contexts
       ./workspace_v5_location.py
       ./workspace_v5_location_capture.py
       ./workspace_v5_location_ownership.py
@@ -156,7 +187,7 @@ stdenvNoCC.mkDerivation {
   doCheck = true;
   checkPhase = ''
     runHook preCheck
-    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_workspace_v5_location_dispatch test_workspace_v5_location test_workspace_v5_location_transaction test_workspace_v5_location_install_transaction test_swiftpm_purifier test_legacy_runtime test_legacy_pin_bridge test_dependencies_v1 test_dependencies_v3 test_workspace_v4_path test_workspace_v4_path_capture test_workspace_v4_path_ownership test_workspace_v4_path_transaction test_workspace_v4_path_install_transaction test_workspace_v4_path_lifecycle test_dependencies_v3_lifecycle test_dependencies_v3_install_transaction test_dependencies_v3_ownership test_dependencies_v3_capture test_dependencies_v3_transaction test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection test_dependencies_v1_ownership test_dependencies_v1_tree_transaction test_dependencies_v1_install_transaction test_dependencies_v1_host test_dependencies_v1_bridge test_dependencies_v1_lifecycle)
+    (cd pkgs/cli && SWIFTPM_PURIFIER_RUNTIME_MODE=sdk python3 -m unittest -v test_store_git_sources test_bounded_native test_workspace_v7_dispatch test_workspace_v7_cli_dispatch test_workspace_v7_pins3 test_workspace_v7_pins2 test_workspace_v7_pins3_transactions test_workspace_v7_pins2_transactions test_workspace_v5_location_dispatch test_workspace_v5_location test_workspace_v5_location_transaction test_workspace_v5_location_install_transaction test_swiftpm_purifier test_legacy_runtime test_legacy_pin_bridge test_dependencies_v1 test_dependencies_v3 test_workspace_v4_path test_workspace_v4_path_capture test_workspace_v4_path_ownership test_workspace_v4_path_transaction test_workspace_v4_path_install_transaction test_workspace_v4_path_lifecycle test_dependencies_v3_lifecycle test_dependencies_v3_install_transaction test_dependencies_v3_ownership test_dependencies_v3_capture test_dependencies_v3_transaction test_dependencies_v1_selectors test_dependencies_v1_cache test_dependencies_v1_manifest test_dependencies_v1_capture test_dependencies_v1_transaction test_dependencies_v1_projection test_dependencies_v1_ownership test_dependencies_v1_tree_transaction test_dependencies_v1_install_transaction test_dependencies_v1_host test_dependencies_v1_bridge test_dependencies_v1_lifecycle)
     runHook postCheck
   '';
 
@@ -164,6 +195,7 @@ stdenvNoCC.mkDerivation {
     runHook preInstall
     mkdir -p $out/libexec/swiftpm-purifier
     cp pkgs/cli/swiftpm_purifier.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/store_git_sources.py pkgs/cli/store_git_validator.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/bounded_native.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/legacy_manifest.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/legacy_runtime.py $out/libexec/swiftpm-purifier/
@@ -187,6 +219,19 @@ stdenvNoCC.mkDerivation {
     cp pkgs/cli/workspace_v4_path.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/native_path_family.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/native_protocols.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_dispatch.py pkgs/cli/workspace_v7_legacy_registry.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins3.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins3_capture.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins3_ownership.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins3_transaction.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins3_install_transaction.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins3_lifecycle.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins2.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins2_capture.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins2_ownership.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins2_transaction.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins2_install_transaction.py $out/libexec/swiftpm-purifier/
+    cp pkgs/cli/workspace_v7_pins2_lifecycle.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v5_location.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v5_location_capture.py $out/libexec/swiftpm-purifier/
     cp pkgs/cli/workspace_v5_location_ownership.py $out/libexec/swiftpm-purifier/
