@@ -29,6 +29,9 @@ swiftPackages.stdenv.mkDerivation {
       value=''${value//-rpath $out\/lib/}
       printf 'export %s=%q\n' "$name" "$value"
     done > $out
+    # The linker wrapper uses NIX_STORE to exclude host directories from
+    # automatic RPATHs. Capture the selected store, not the caller's value.
+    printf 'export NIX_STORE=%q\n' ${lib.escapeShellArg builtins.storeDir} >> $out
     printf 'export PATH=%q"''${PATH:+:$PATH}"\n' "$PATH" >> $out
     printf 'export SWIFT_EXEC=%q\n' ${lib.escapeShellArg "${swiftPackages.swift}/bin/swiftc"} >> $out
   ''
