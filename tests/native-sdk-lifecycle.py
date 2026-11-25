@@ -14,8 +14,56 @@ import json
 import os
 from pathlib import Path
 import shutil
+import sys
 import threading
 import uuid
+
+
+def provisioning_files(metadata, logs):
+    """Retain selected, source-declared SDK bytes before a native failure."""
+    swift = Path(metadata["swift"])
+    paths = {
+        "environment": Path(metadata["environment"]),
+        "descriptor": Path(metadata["descriptor"]),
+        "compiler": swift / "bin/swiftc",
+        "package": Path(metadata["swiftpm"]) / "bin/swift-package",
+        "foundation": swift / "lib/libFoundation.so",
+        "foundation-internationalization": swift
+        / "lib/libFoundationInternationalization.so",
+    }
+    for index, root in enumerate(metadata["icu"]):
+        for name in ["icucore", "icuuc", "icui18n", "icudata", "icuio"]:
+            paths[f"icu-{index}-{name}"] = Path(root) / "lib" / f"lib{name}.so"
+    result = {}
+    for label, path in paths.items():
+        row = {"path": str(path)}
+        result[label] = row
+        if not path.is_file():
+            row["missing"] = True
+            continue
+        size = path.stat().st_size
+        limit = 1024**2 if label in ("environment", "descriptor") else 256 * 1024**2
+        if size > limit:
+            raise RuntimeError("SDK diagnostic file exceeds bound: " + label)
+        digest = hashlib.sha256()
+        retained = bytearray() if label in ("environment", "descriptor") else None
+        measured = 0
+        with path.open("rb") as stream:
+            while chunk := stream.read(1024**2):
+                measured += len(chunk)
+                if measured > limit:
+                    raise RuntimeError("SDK diagnostic file grew past bound: " + label)
+                digest.update(chunk)
+                if retained is not None:
+                    retained.extend(chunk)
+        row.update(
+            resolved=str(path.resolve()), bytes=measured, sha256=digest.hexdigest()
+        )
+        if retained is not None:
+            target = logs / ("sdk-provisioning-" + label)
+            target.write_bytes(retained)
+            row["retained"] = str(target)
+    return result
 
 
 def main():
@@ -203,6 +251,69 @@ def main():
             )
         )
         cli = str(Path(built[0]["outputs"]["out"]) / "bin/swiftpm-purifier")
+
+        if args.epoch == "default":
+            # These are diagnostics, not capability answers or linker changes.
+            provisioning = json.loads(
+                run(
+                    "sdk-provisioning-metadata",
+                    [
+                        "nix",
+                        "eval",
+                        "--impure",
+                        "--json",
+                        "--expr",
+                        common
+                        + """let
+                          cli = pkgs.swiftpm-purifier.cli.override { inherit swiftPackages; runtimeMode = "sdk"; };
+                        in {
+                          environment = toString cli.nativeEnvironment;
+                          descriptor = toString cli.nativeSDKDescriptorFile;
+                          environmentShell = cli.nativeSDKDescriptor.environmentShell;
+                          swift = toString swiftPackages.swift;
+                          swiftpm = toString swiftPackages.swiftpm;
+                          icu = if swiftPackages ? swift-foundation-icu
+                            then map toString (swiftPackages.swift-foundation-icu.propagatedBuildInputs or [])
+                            else [];
+                        }""",
+                    ],
+                    timeout=30,
+                )
+            )
+            names = [
+                "NIX_CFLAGS_COMPILE",
+                "NIX_LDFLAGS",
+                "NIX_CFLAGS_COMPILE_x86_64_unknown_linux_gnu",
+                "NIX_LDFLAGS_x86_64_unknown_linux_gnu",
+            ]
+            receipt["sdkProvisioning"] = {
+                "metadata": provisioning,
+                "files": provisioning_files(provisioning, work / "logs"),
+                "callerLinkEnvironment": {
+                    name: env[name] for name in names if name in env
+                },
+            }
+            save()
+            receipt["sdkProvisioning"]["selectedLinkEnvironment"] = json.loads(
+                run(
+                    "sdk-provisioning-link-environment",
+                    [
+                        provisioning["environmentShell"],
+                        "--noprofile",
+                        "--norc",
+                        "-c",
+                        'source "$1"; exec "$2" -c "$3"',
+                        "sdk-provisioning",
+                        provisioning["environment"],
+                        sys.executable,
+                        "import json,os;print(json.dumps({name:os.environ[name] for name in "
+                        + repr(names)
+                        + " if name in os.environ},sort_keys=True))",
+                    ],
+                    timeout=30,
+                )
+            )
+            save()
 
         def purifier(label, arguments, directory=project):
             return run(
